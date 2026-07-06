@@ -1,9 +1,7 @@
 # photoshop-automation
 
 Automate editing Photoshop social templates (quote cards, tweet reposts, trending
-headlines) by driving **headless Photopea** — free, no Adobe API, high fidelity
-(fonts, per-character color, clip masks all preserved). One JS render engine runs
-from a Python CLI and from a client-side phone web app.
+headlines) by using Photopea. One JS render engine runs from a Python CLI and from a client-side phone web app.
 
 ## Architecture
 
@@ -44,9 +42,9 @@ python src/py/cli.py configs/req_trending.json         # trending headline + emo
 ```
 Add `--headed` to watch the browser, `--debug` for browser console output.
 
-## Web app (phone)
+## Web app 
 
-Static — serve the repo root and open `/web/index.html`:
+Static: serve the repo root and open `/web/index.html`:
 
 ```
 python -m http.server 8080      # or any static server
@@ -80,31 +78,3 @@ Each template needs one-time Photoshop prep + a manifest:
   "output": "renders/out.png"
 }
 ```
-
-## Deploying the web app (Cloudflare Pages)
-
-The phone app is static and client-side, so Pages just needs to serve the repo
-root as-is — no build step:
-
-- **Framework preset:** None
-- **Build command:** (leave empty)
-- **Build output directory:** `/` (repo root — `web/env.js` fetches
-  `/configs/...`, `/fonts/...`, `/templates/...` relative to the site root, and
-  `web/app.js` resolves `..` back to that root from `/web/index.html`)
-
-Connect the repo (push it to GitHub/GitLab first) in the Cloudflare dashboard,
-or skip git entirely and deploy the working directory directly with
-`npx wrangler pages deploy .`. Either way, once live, open
-`https://<project>.pages.dev/web/index.html` on a phone — HTTPS is required for
-the photo picker and Web Share API to work.
-
-Free tier is enough: Pages has no bandwidth/egress charges, and the platform's
-25 MiB per-file cap (same on free and paid) is the only real constraint —
-template PSDs must stay under that (embedded Smart Object placeholders are
-never seen in output, so shrinking them before saving costs nothing).
-
-## Notes / gotchas
-
-Driving Photopea headlessly has sharp edges (one op per message, unreliable
-`layer.bounds`, can't hide certain clip smart objects, paste centers on canvas).
-They're documented inline in `src/core/` and in `CLAUDE.md`.
