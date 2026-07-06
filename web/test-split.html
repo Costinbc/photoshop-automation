@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>split + downscale integration test</title></head>
+<body style="background:#111;color:#ddd;font-family:sans-serif">
+  <p id="log">starting…</p>
+  <img id="out" style="max-width:420px;border:1px solid #333" />
+  <script type="module">
+    // Verifies the split path in the browser with LARGE (12MP) images fed as
+    // Blobs, so env.loadImage downscales them (the fix for the split timeout).
+    import { RenderSession } from "./session.js";
+    const log = (m) => { document.getElementById("log").textContent = m; };
+    const session = new RenderSession({ base: ".." });
+
+    const asBlob = async (url) => await (await fetch(url)).blob();
+    const [left, right] = await Promise.all([asBlob("../assets/big_a.jpg"), asBlob("../assets/big_b.jpg")]);
+
+    const request = {
+      template: "quote_big_template",
+      quote: "these two guys are the best backcourt in the entire league",
+      caption: "split test with big photos",
+      mode: "split",
+      images: { left, right },
+    };
+    try {
+      const png = await session.render(request, log);
+      document.getElementById("out").src = URL.createObjectURL(new Blob([png], { type: "image/png" }));
+      log("DONE"); window.__done = true;
+    } catch (e) { log("ERROR: " + e.message); window.__error = e.message; }
+  </script>
+</body>
+</html>

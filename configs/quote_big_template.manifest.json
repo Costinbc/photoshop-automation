@@ -1,0 +1,49 @@
+{
+  "name": "quote_big_template",
+  "file": "templates/quote_big_template.psd",
+  "canvas": [1080, 1350],
+  "fonts": ["impact.ttf", "Franklin Gothic Heavy Regular.ttf", "Haettenschweiler-Regular.ttf"],
+  "textTransform": "uppercase",
+
+  "text": {
+    "quote": "quote text",
+    "caption": "quote caption"
+  },
+
+  "layout": {
+    "block": {
+      "text": "quote text",
+      "field": "quote",
+      "font": "impact.ttf",
+      "balance": true,
+      "width": 1060,
+      "fontSizeDefault": 110,
+      "leadingRatio": 0.92,
+      "bottomY": 1215,
+      "above": [ { "layer": "quote marks", "gap": 34 } ]
+    }
+  },
+
+  "imageModes": {
+    "single": {
+      "hide": ["image left", "image right"],
+      "slots": {
+        "main": { "target": "big image", "frame": [0, 0, 1080, 1350] }
+      }
+    },
+    "split": {
+      "hide": ["big image"],
+      "slots": {
+        "left":  { "target": "image left",  "frame": [0, 0, 540, 1350], "clip": true },
+        "right": { "target": "image right", "frame": [540, 0, 540, 1350] }
+      }
+    }
+  },
+
+  "circle": {
+    "target": "eclipse clipping image",
+    "frame": [774, 57, 225, 225],
+    "clip": true,
+    "hideWhenEmpty": ["eclipse"]
+  }
+}

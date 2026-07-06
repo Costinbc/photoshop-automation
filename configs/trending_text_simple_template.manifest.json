@@ -1,0 +1,50 @@
+{
+  "name": "trending_text_simple_template",
+  "file": "templates/trending_text_simple_template.psd",
+  "canvas": [1080, 1344],
+  "fonts": ["impact.ttf", "Franklin Gothic Heavy Regular.ttf", "Haettenschweiler-Regular.ttf"],
+  "textTransform": "uppercase",
+
+  "text": {
+    "trending": "trending text"
+  },
+
+  "layout": {
+    "block": {
+      "text": "trending text",
+      "field": "trending",
+      "font": "impact.ttf",
+      "balance": true,
+      "width": 1060,
+      "fontSizeDefault": 92,
+      "leadingRatio": 1.12,
+      "bottomY": 1250
+    }
+  },
+
+  "imageModes": {
+    "single": {
+      "hide": [],
+      "slots": {
+        "main": { "target": "background player image", "frame": [0, 0, 1080, 1344] }
+      }
+    }
+  },
+
+  "circle": {
+    "target": "image clipped",
+    "frame": [706, 118, 350, 350],
+    "clip": true,
+    "hideWhenEmpty": ["eclipse"]
+  },
+
+  "emoji": {
+    "follow": { "field": "trending", "gap": 10, "dx": 0, "dy": 0, "scale": 1.15 },
+    "layers": {
+      "crying":    { "layer": "loudly-crying-face_1f62d",       "width": 140 },
+      "joy":       { "layer": "face-with-tears-of-joy_1f602 (1)", "width": 154 },
+      "flushed":   { "layer": "flushed-face_1f633",             "width": 150 },
+      "grimacing": { "layer": "grimacing-face_1f62c",           "width": 148 }
+    }
+  }
+}

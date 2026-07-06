@@ -1,0 +1,5 @@
+renders/*.png
+payloads/
+__pycache__/
+*.pyc
+.idea/

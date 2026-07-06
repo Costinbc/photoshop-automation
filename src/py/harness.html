@@ -1,0 +1,14 @@
+<!doctype html>
+<!--
+CLI render harness — a headless-friendly stand-in for web/index.html. It boots
+the exact same browser-side render session (Photopea iframe + canvas measurer +
+canvas black-key) that the phone app uses, and exposes one function,
+window.__runRender(requestJson), for the Python CLI to call over Playwright.
+No UI: the Python CLI drives everything.
+-->
+<html lang="en">
+<head><meta charset="utf-8" /><title>render harness</title></head>
+<body>
+<script type="module" src="/src/py/harness.js"></script>
+</body>
+</html>

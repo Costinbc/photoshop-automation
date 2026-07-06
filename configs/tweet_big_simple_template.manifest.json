@@ -1,0 +1,32 @@
+{
+  "name": "tweet_big_simple_template",
+  "file": "templates/tweet_big_simple_template.psd",
+  "canvas": [1080, 1350],
+  "fonts": ["impact.ttf", "Franklin Gothic Heavy Regular.ttf", "Haettenschweiler-Regular.ttf"],
+
+  "text": {},
+
+  "imageModes": {
+    "single": {
+      "hide": ["image right", "separating rectangle"],
+      "slots": {
+        "main": { "target": "image full", "frame": [0, 0, 1080, 1350] }
+      }
+    },
+    "split": {
+      "hide": ["image full"],
+      "slots": {
+        "left":  { "target": "image left clipped", "frame": [0, 0, 540, 1350], "clip": true },
+        "right": { "target": "image right", "frame": [540, 0, 540, 1350] }
+      }
+    }
+  },
+
+  "tweet": {
+    "target": "tweet with background color selected and removed",
+    "frame": [20, 950, 1060, 386],
+    "fit": "containWidth",
+    "keyBlack": true,
+    "clear": [[0.74, 0.0, 0.26, 0.08]]
+  }
+}
