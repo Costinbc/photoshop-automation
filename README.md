@@ -1,9 +1,7 @@
 # photoshop-automation
 
 Automate editing Photoshop social templates (quote cards, tweet reposts, trending
-headlines) by driving **headless Photopea** — free, no Adobe API, high fidelity
-(fonts, per-character color, clip masks all preserved). One JS render engine runs
-from a Python CLI and from a client-side phone web app.
+headlines) by using Photopea. One JS render engine runs from a Python CLI and from a client-side phone web app.
 
 ## Architecture
 
