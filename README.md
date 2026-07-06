@@ -78,7 +78,3 @@ Each template needs one-time Photoshop prep + a manifest:
   "output": "renders/out.png"
 }
 ```
-
-Driving Photopea headlessly has sharp edges (one op per message, unreliable
-`layer.bounds`, can't hide certain clip smart objects, paste centers on canvas).
-They're documented inline in `src/core/` and in `CLAUDE.md`.
