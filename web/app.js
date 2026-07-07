@@ -83,49 +83,107 @@ function imagePicker() {
   const panel = el("div", { className: "search-panel hidden" });
   const q = el("input", { type: "text", placeholder: "Search images…" });
   const go = el("button", { type: "button", className: "search-go", textContent: "Go" });
-  const grid = el("div", { className: "search-grid" });
-  const msg = el("div", { className: "search-msg" });
   const row = el("div", { className: "search-row" });
   row.append(q, go);
-  panel.append(row, grid, msg);
+
+  // Result count maps directly to Serper's cost tiers: 10 = 1 credit, 100 = 2
+  // credits. 100 is fetched in ONE call (still 2 credits) and paged locally below.
+  const count = el("select", { className: "search-count" });
+  count.append(
+    el("option", { value: "10", textContent: "10 results" }),
+    el("option", { value: "100", textContent: "100 results" })
+  );
+  // "High quality" prefers large (≥4-megapixel) images so they fill the template
+  // without upscaling. On by default; falls back to all results if too few pass.
+  const hq = el("input", { type: "checkbox", id: `hq-${Math.random().toString(36).slice(2)}`, checked: true });
+  const hqLabel = el("label", { className: "search-opt", htmlFor: hq.id, textContent: " High quality (large images)" });
+  hqLabel.prepend(hq);
+  const opts = el("div", { className: "search-opts" });
+  opts.append(count, hqLabel);
+
+  const grid = el("div", { className: "search-grid" });
+  const pager = el("div", { className: "search-pager hidden" });
+  const prev = el("button", { type: "button", className: "pager-btn", textContent: "‹ Prev" });
+  const next = el("button", { type: "button", className: "pager-btn", textContent: "Next ›" });
+  const pageLabel = el("span", { className: "pager-label" });
+  pager.append(prev, pageLabel, next);
+  const msg = el("div", { className: "search-msg" });
+  panel.append(row, opts, grid, pager, msg);
 
   const chosen = el("div", { className: "imgpick-chosen hidden" });
   const chosenImg = el("img", { alt: "selected web image" });
   const clearBtn = el("button", { type: "button", textContent: "✕ clear" });
   chosen.append(chosenImg, el("span", { textContent: "web image selected" }), clearBtn);
 
-  const deselectGrid = () => { for (const im of grid.children) im.setAttribute("aria-selected", "false"); };
+  // Paged display of one search's results — the 100-result fetch is a single
+  // call; pages just slice the already-fetched array (no extra Serper credits).
+  const PAGE_SIZE = 12;
+  let results = [];
+  let page = 0;
+  let selectedFull = null; // track the chosen image so it stays highlighted across pages
+
+  const markSelection = () => {
+    for (const im of grid.children)
+      im.setAttribute("aria-selected", String(selectedFull != null && im.dataset.full === selectedFull));
+  };
+  const renderPage = () => {
+    grid.replaceChildren();
+    const start = page * PAGE_SIZE;
+    for (const r of results.slice(start, start + PAGE_SIZE)) {
+      const im = el("img", { src: r.thumb, loading: "lazy", alt: "", dataset: { full: r.full } });
+      // Show each result at its true aspect ratio (like Google Images). Setting it
+      // from the known dimensions also reserves the right height before load.
+      if (r.w && r.h) im.style.aspectRatio = `${r.w} / ${r.h}`;
+      im.addEventListener("click", () => useWebImage(r));
+      grid.append(im);
+    }
+    markSelection();
+    const pages = Math.ceil(results.length / PAGE_SIZE);
+    pager.classList.toggle("hidden", pages <= 1);
+    pageLabel.textContent = `${page + 1} / ${pages}`;
+    prev.disabled = page === 0;
+    next.disabled = page >= pages - 1;
+  };
 
   const useFile = () => {
     if (!file.files[0]) return;
     value = file.files[0];
     chosen.classList.add("hidden");
-    deselectGrid();
+    selectedFull = null; markSelection();
   };
-  const useWebImage = (r, im) => {
+  const useWebImage = (r) => {
     value = `/api/fetch?url=${encodeURIComponent(r.full)}`;
     chosenImg.src = r.thumb;
     chosen.classList.remove("hidden");
     file.value = "";
-    for (const x of grid.children) x.setAttribute("aria-selected", String(x === im));
+    selectedFull = r.full; markSelection();
   };
   const clear = () => {
     value = file.files[0] || null;
     chosen.classList.add("hidden");
-    deselectGrid();
+    selectedFull = null; markSelection();
   };
 
   file.addEventListener("change", useFile);
   clearBtn.addEventListener("click", clear);
   toggle.addEventListener("click", () => panel.classList.toggle("hidden"));
+  prev.addEventListener("click", () => { if (page > 0) { page--; renderPage(); } });
+  next.addEventListener("click", () => { if ((page + 1) * PAGE_SIZE < results.length) { page++; renderPage(); } });
+  // A new count/quality choice needs a fresh fetch (100 costs a 2nd credit).
+  hq.addEventListener("change", () => { if (q.value.trim()) search(); });
+  count.addEventListener("change", () => { if (q.value.trim()) search(); });
 
   const search = async () => {
     const term = q.value.trim();
     if (!term) return;
     msg.textContent = "searching…";
     grid.replaceChildren();
+    pager.classList.add("hidden");
+    results = []; page = 0;
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
+      const params = new URLSearchParams({ q: term, count: count.value });
+      if (hq.checked) params.set("hq", "1");
+      const res = await fetch(`/api/search?${params}`);
       // The Function always returns JSON; a non-JSON body means it isn't running
       // (e.g. served by a plain static server, not `wrangler pages dev`).
       const data = await res.json().catch(() => null);
@@ -133,12 +191,8 @@ function imagePicker() {
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (!data.results?.length) { msg.textContent = "no results"; return; }
       msg.textContent = "";
-      for (const r of data.results) {
-        const im = el("img", { src: r.thumb, loading: "lazy", alt: "" });
-        im.setAttribute("aria-selected", "false");
-        im.addEventListener("click", () => useWebImage(r, im));
-        grid.append(im);
-      }
+      results = data.results;
+      renderPage();
     } catch (err) {
       msg.textContent = `search error: ${err.message}`;
     }

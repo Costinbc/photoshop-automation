@@ -13,31 +13,30 @@ const json = (obj, status = 200) =>
     headers: { "content-type": "application/json", "cache-control": "no-store" },
   });
 
-export async function onRequestGet({ request, env }) {
-  const q = new URL(request.url).searchParams.get("q")?.trim();
-  if (!q) return json({ error: "missing query" }, 400);
-  if (!env.SERPER_KEY) return json({ error: "search not configured (set SERPER_KEY)" }, 501);
+// Google Images size filter for "high quality": only images ≥4 megapixels, which
+// is roughly a large/high-res photo (e.g. ~2400×1600+) — big enough to fill the
+// 1080×1350 templates without upscaling. Passed through Serper as `tbs`.
+const HQ_TBS = "isz:lt,islt:4mp";
 
-  let data;
-  try {
-    const res = await fetch("https://google.serper.dev/images", {
-      method: "POST",
-      headers: { "X-API-KEY": env.SERPER_KEY, "content-type": "application/json" },
-      body: JSON.stringify({ q, num: 20 }),
-    });
-    data = await res.json();
-    if (!res.ok) {
-      const reason = data?.message || `upstream ${res.status}`;
-      return json({ error: `search failed: ${reason}` }, 502);
-    }
-  } catch (err) {
-    return json({ error: `search unreachable: ${err.message}` }, 502);
-  }
+// Serper bills by result count in hard tiers: num≤10 = 1 credit, num 11–100 = 2
+// credits (it rounds anything above 10 up to 100). So only 10 or 100 are ever
+// worth requesting — the client picks one, and we clamp here so a stray value
+// can't silently cost 2 credits.
+const clampNum = (n) => (n === 100 ? 100 : 10);
 
-  // Normalize to the picker's shape. Serper gives full image + thumbnail URLs and
-  // real dimensions, so the client can show thumbnails and the pipeline can pull
-  // the full image (through /api/fetch) at template resolution.
-  const results = (data.images || [])
+// One Serper image query, normalized to the picker's shape. `tbs` optionally
+// applies Google's image-size filter. Throws on a non-OK upstream response.
+async function serperImages(key, q, num, tbs) {
+  const body = { q, num };
+  if (tbs) body.tbs = tbs;
+  const res = await fetch("https://google.serper.dev/images", {
+    method: "POST",
+    headers: { "X-API-KEY": key, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.message || `upstream ${res.status}`);
+  return (data.images || [])
     .map((it) => ({
       thumb: it.thumbnailUrl || it.imageUrl,
       full: it.imageUrl,
@@ -45,6 +44,23 @@ export async function onRequestGet({ request, env }) {
       h: it.imageHeight,
     }))
     .filter((r) => r.thumb && r.full);
+}
 
-  return json({ results });
+export async function onRequestGet({ request, env }) {
+  const url = new URL(request.url);
+  const q = url.searchParams.get("q")?.trim();
+  const hq = url.searchParams.get("hq") === "1";
+  const num = clampNum(Number(url.searchParams.get("count")));
+  if (!q) return json({ error: "missing query" }, 400);
+  if (!env.SERPER_KEY) return json({ error: "search not configured (set SERPER_KEY)" }, 501);
+
+  try {
+    let results = await serperImages(env.SERPER_KEY, q, num, hq ? HQ_TBS : null);
+    // "High quality if possible": if the size filter left nothing, fall back to
+    // unfiltered so a niche query never comes back empty.
+    if (hq && results.length === 0) results = await serperImages(env.SERPER_KEY, q, num, null);
+    return json({ results });
+  } catch (err) {
+    return json({ error: `search failed: ${err.message}` }, 502);
+  }
 }
