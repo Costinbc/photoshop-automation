@@ -18,10 +18,10 @@ const json = (obj, status = 200) =>
 // 1080×1350 templates without upscaling. Passed through Serper as `tbs`.
 const HQ_TBS = "isz:lt,islt:4mp";
 
-// Serper bills by result count in hard tiers: num≤10 = 1 credit, num 11–100 = 2
-// credits (it rounds anything above 10 up to 100). So only 10 or 100 are ever
-// worth requesting — the client picks one, and we clamp here so a stray value
-// can't silently cost 2 credits.
+// Serper prices by result count in steps: asking for more than 10 jumps to a
+// higher tier, and it rounds anything in 11–100 up to 100 regardless. So only 10
+// and 100 are meaningful requests — clamp here so a stray `count` can't quietly
+// land on the pricier tier.
 const clampNum = (n) => (n === 100 ? 100 : 10);
 
 // One Serper image query, normalized to the picker's shape. `tbs` optionally

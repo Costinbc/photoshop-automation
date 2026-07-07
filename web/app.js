@@ -86,8 +86,9 @@ function imagePicker() {
   const row = el("div", { className: "search-row" });
   row.append(q, go);
 
-  // Result count maps directly to Serper's cost tiers: 10 = 1 credit, 100 = 2
-  // credits. 100 is fetched in ONE call (still 2 credits) and paged locally below.
+  // Two counts only: Serper charges a higher tier above 10 results (and rounds
+  // any 11–100 up to 100), so an in-between value costs the same as 100 for fewer
+  // images. The 100 set comes back in one call and is paged locally (below).
   const count = el("select", { className: "search-count" });
   count.append(
     el("option", { value: "10", textContent: "10 results" }),
@@ -115,8 +116,8 @@ function imagePicker() {
   const clearBtn = el("button", { type: "button", textContent: "✕ clear" });
   chosen.append(chosenImg, el("span", { textContent: "web image selected" }), clearBtn);
 
-  // Paged display of one search's results — the 100-result fetch is a single
-  // call; pages just slice the already-fetched array (no extra Serper credits).
+  // Paged display of a single search's results: one fetch fills `results`, and
+  // paging just slices it — moving between pages makes no further API calls.
   const PAGE_SIZE = 12;
   let results = [];
   let page = 0;
@@ -169,9 +170,10 @@ function imagePicker() {
   toggle.addEventListener("click", () => panel.classList.toggle("hidden"));
   prev.addEventListener("click", () => { if (page > 0) { page--; renderPage(); } });
   next.addEventListener("click", () => { if ((page + 1) * PAGE_SIZE < results.length) { page++; renderPage(); } });
-  // A new count/quality choice needs a fresh fetch (100 costs a 2nd credit).
+  // hq re-filters live (same result count, just a filter tweak). count is NOT
+  // live — it's applied on the next Go, so picking a bigger result set never
+  // fires a search on its own.
   hq.addEventListener("change", () => { if (q.value.trim()) search(); });
-  count.addEventListener("change", () => { if (q.value.trim()) search(); });
 
   const search = async () => {
     const term = q.value.trim();
