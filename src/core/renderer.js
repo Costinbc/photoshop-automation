@@ -22,10 +22,33 @@ import { planInlineEmoji } from "./inline-emoji.js";
 
 const noop = () => {};
 
+// A template's reflow blocks. Most templates have a single `layout.block`;
+// multi-headline templates (e.g. the two-quote card) declare `layout.blocks`.
+// Both normalize to an array here so the rest of the code is block-count-agnostic.
+function getBlocks(manifest) {
+  const L = manifest.layout;
+  if (!L) return [];
+  if (L.blocks) return L.blocks;
+  return L.block ? [L.block] : [];
+}
+
+// The font size for one block: a per-field override (`fontSizes[field]`) wins,
+// then a shared `fontSize`, then the block's own default. This lets a template
+// expose one size (single block) or one per headline (multi-block) uniformly.
+function sizeFor(request, block) {
+  if (!block) return request.fontSize;
+  const per = request.fontSizes && request.fontSizes[block.field];
+  if (per != null) return per;
+  if (request.fontSize != null) return request.fontSize;
+  return block.fontSizeDefault;
+}
+
 export async function render(request, { client, env, log = noop, installedFonts } = {}) {
   const manifest = await env.loadManifest(request.template);
   const offsets = request.offsets || {};
-  const block = manifest.layout && manifest.layout.block;
+  const blocks = getBlocks(manifest);
+  const blockByField = new Map(blocks.map((b) => [b.field, b]));
+  const block = blocks[0] || null; // legacy single-block references (inline emoji ctx, etc.)
 
   // Install this template's fonts (skipping any already installed this session).
   const fontFiles = manifest.fonts || [];
@@ -59,10 +82,10 @@ export async function render(request, { client, env, log = noop, installedFonts 
   for (const [key, layer] of Object.entries(manifest.text || {})) {
     if (request[key] == null) continue;
     let value = upper ? String(request[key]).toUpperCase() : String(request[key]);
-    const isBlock = block && block.field === key;
-    if (isBlock && inlineEmoji) {
-      const size = request.fontSize || block.fontSizeDefault;
-      const measure = await env.createMeasurer({ font: block.font, fontPx: size });
+    const fieldBlock = blockByField.get(key);
+    if (fieldBlock && inlineEmoji && inlineEmoji.follow.field === key) {
+      const size = sizeFor(request, fieldBlock);
+      const measure = await env.createMeasurer({ font: fieldBlock.font, fontPx: size });
       const entry = inlineEmoji.layers[request.emoji];
       if (!entry || entry.width == null) {
         throw new Error(`Emoji '${request.emoji}' has no width for inline placement`);
@@ -72,14 +95,14 @@ export async function render(request, { client, env, log = noop, installedFonts 
       const targetBox = size * (inlineEmoji.follow.scale || 1);
       emojiScalePct = (targetBox / entry.width) * 100;
       const reserveWidth = targetBox + (inlineEmoji.follow.gap || 0);
-      const plan = planInlineEmoji({ text: value, measure, maxWidth: block.width, reserveWidth });
+      const plan = planInlineEmoji({ text: value, measure, maxWidth: fieldBlock.width, reserveWidth });
       value = plan.render;
       emojiPlace = plan.place;
-    } else if (isBlock && block.balance && block.width && env.createMeasurer) {
+    } else if (fieldBlock && fieldBlock.balance && fieldBlock.width && env.createMeasurer) {
       // Balance line breaks for the block's text field (respecting typed \n).
-      const size = request.fontSize || block.fontSizeDefault;
-      const measure = await env.createMeasurer({ font: block.font, fontPx: size });
-      value = balanceText(value, measure, block.width);
+      const size = sizeFor(request, fieldBlock);
+      const measure = await env.createMeasurer({ font: fieldBlock.font, fontPx: size });
+      value = balanceText(value, measure, fieldBlock.width);
     }
     await client.setText(layer, value);
     log(`text '${key}' set`);
@@ -92,7 +115,7 @@ export async function render(request, { client, env, log = noop, installedFonts 
   await applyEmoji(request, manifest, client, log, {
     place: emojiPlace,
     block,
-    size: request.fontSize || (block && block.fontSizeDefault),
+    size: sizeFor(request, block),
     canvas: manifest.canvas,
     scalePct: emojiScalePct,
   });
@@ -104,35 +127,39 @@ export async function render(request, { client, env, log = noop, installedFonts 
   return png;
 }
 
-// Measure the text block's real height and reposition dependent layers so they
-// keep fixed gaps (quote marks above, bar/caption below, etc.).
+// For each reflow block: set its size/leading, anchor it, and reposition its
+// dependent layers so they keep fixed gaps (quote marks above, bar/caption
+// below, etc.). Multi-block templates (e.g. the two-quote card) reflow each
+// headline independently.
 async function reflow(request, manifest, client, log) {
-  const L = manifest.layout && manifest.layout.block;
-  if (!L) return;
+  const blocks = getBlocks(manifest);
+  if (!blocks.length) return;
 
-  const size = request.fontSize || L.fontSizeDefault;
-  if (size) await client.setFontSize(L.text, size);
-  // Tight, size-relative line spacing so multi-line text uses the space.
-  if (size && L.leadingRatio) await client.setLeading(L.text, Math.round(size * L.leadingRatio));
+  for (const L of blocks) {
+    const size = sizeFor(request, L);
+    if (size) await client.setFontSize(L.text, size);
+    // Tight, size-relative line spacing so multi-line text uses the space.
+    if (size && L.leadingRatio) await client.setLeading(L.text, Math.round(size * L.leadingRatio));
 
-  // Anchor the re-measured text block: centered on a midline (fills the region)
-  // or bottom-anchored (grows upward).
-  if (L.centerY != null) {
+    // Anchor the re-measured text block: centered on a midline (fills the region)
+    // or bottom-anchored (grows upward, e.g. a quote hugging its attribution line).
+    if (L.centerY != null) {
+      const tb = await client.bounds(L.text);
+      await client.translateLayer(L.text, 0, L.centerY - tb.cy);
+    } else if (L.bottomY != null) {
+      const tb = await client.bounds(L.text);
+      await client.translateLayer(L.text, 0, L.bottomY - tb.b);
+    }
+
     const tb = await client.bounds(L.text);
-    await client.translateLayer(L.text, 0, L.centerY - tb.cy);
-  } else if (L.bottomY != null) {
-    const tb = await client.bounds(L.text);
-    await client.translateLayer(L.text, 0, L.bottomY - tb.b);
-  }
-
-  const tb = await client.bounds(L.text);
-  for (const a of L.above || []) {
-    const b = await client.bounds(a.layer);
-    await client.translateLayer(a.layer, 0, tb.t - a.gap - b.b); // bottom -> gap above text top
-  }
-  for (const d of L.below || []) {
-    const b = await client.bounds(d.layer);
-    await client.translateLayer(d.layer, 0, tb.b + d.gap - b.t); // top -> gap below text bottom
+    for (const a of L.above || []) {
+      const b = await client.bounds(a.layer);
+      await client.translateLayer(a.layer, 0, tb.t - a.gap - b.b); // bottom -> gap above text top
+    }
+    for (const d of L.below || []) {
+      const b = await client.bounds(d.layer);
+      await client.translateLayer(d.layer, 0, tb.b + d.gap - b.t); // top -> gap below text bottom
+    }
   }
   log("layout reflowed to text height");
 }

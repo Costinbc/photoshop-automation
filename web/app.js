@@ -9,6 +9,7 @@ import { balanceText } from "../src/core/textwrap.js";
 const BASE = "..";
 const TEMPLATES = [
   { id: "quote_big_template", label: "Quote" },
+  { id: "double_quote_template", label: "Double" },
   { id: "tweet_big_simple_template", label: "Tweet" },
   { id: "trending_text_simple_template", label: "Trending" },
 ];
@@ -27,10 +28,14 @@ const setStatus = (m) => { $("status").textContent = m; };
 
 const session = new RenderSession({ base: BASE });
 
+// A template's reflow blocks — a single `layout.block` or a `layout.blocks`
+// array (multi-headline templates like the two-quote card). Mirrors getBlocks
+// in the renderer so the form and the render request stay in sync.
+const layoutBlocks = (m) => m.layout?.blocks || (m.layout?.block ? [m.layout.block] : []);
+
 // Per-render UI state, rebuilt on template change.
 let manifest = null;
-let controls = {};        // { texts:{key:el}, fontSize, rows, mode, images:{slot:el}, circle, tweet, emoji }
-let heroField = null;     // key of the balanced/reflowed text field
+let controls = {};        // { texts:{key:el}, fontSizes:{field:el}, rows, rowsBlock, mode, images:{slot}, circle, tweet, emoji }
 let measurer = null, measurerSize = null;
 let lastPng = null;
 
@@ -62,6 +67,87 @@ function segmented(items, selected, onSelect) {
 }
 function fileInput() {
   return el("input", { type: "file", accept: "image/*" });
+}
+
+// An image source for one slot: upload a file OR search the web and tap a result.
+// The two are mutually exclusive — the most recent choice wins. `getValue()`
+// returns a File, a proxied-URL string ("/api/fetch?url=…"), or null (keep the
+// template default). The proxied string flows through env.loadImage unchanged,
+// so the render path is identical to an uploaded photo.
+function imagePicker() {
+  let value = null;
+  const wrap = el("div", { className: "imgpick" });
+  const file = fileInput();
+  const toggle = el("button", { type: "button", className: "imgpick-toggle", textContent: "🔍 Search the web" });
+
+  const panel = el("div", { className: "search-panel hidden" });
+  const q = el("input", { type: "text", placeholder: "Search images…" });
+  const go = el("button", { type: "button", className: "search-go", textContent: "Go" });
+  const grid = el("div", { className: "search-grid" });
+  const msg = el("div", { className: "search-msg" });
+  const row = el("div", { className: "search-row" });
+  row.append(q, go);
+  panel.append(row, grid, msg);
+
+  const chosen = el("div", { className: "imgpick-chosen hidden" });
+  const chosenImg = el("img", { alt: "selected web image" });
+  const clearBtn = el("button", { type: "button", textContent: "✕ clear" });
+  chosen.append(chosenImg, el("span", { textContent: "web image selected" }), clearBtn);
+
+  const deselectGrid = () => { for (const im of grid.children) im.setAttribute("aria-selected", "false"); };
+
+  const useFile = () => {
+    if (!file.files[0]) return;
+    value = file.files[0];
+    chosen.classList.add("hidden");
+    deselectGrid();
+  };
+  const useWebImage = (r, im) => {
+    value = `/api/fetch?url=${encodeURIComponent(r.full)}`;
+    chosenImg.src = r.thumb;
+    chosen.classList.remove("hidden");
+    file.value = "";
+    for (const x of grid.children) x.setAttribute("aria-selected", String(x === im));
+  };
+  const clear = () => {
+    value = file.files[0] || null;
+    chosen.classList.add("hidden");
+    deselectGrid();
+  };
+
+  file.addEventListener("change", useFile);
+  clearBtn.addEventListener("click", clear);
+  toggle.addEventListener("click", () => panel.classList.toggle("hidden"));
+
+  const search = async () => {
+    const term = q.value.trim();
+    if (!term) return;
+    msg.textContent = "searching…";
+    grid.replaceChildren();
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
+      // The Function always returns JSON; a non-JSON body means it isn't running
+      // (e.g. served by a plain static server, not `wrangler pages dev`).
+      const data = await res.json().catch(() => null);
+      if (!data) throw new Error(`search unavailable (HTTP ${res.status})`);
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (!data.results?.length) { msg.textContent = "no results"; return; }
+      msg.textContent = "";
+      for (const r of data.results) {
+        const im = el("img", { src: r.thumb, loading: "lazy", alt: "" });
+        im.setAttribute("aria-selected", "false");
+        im.addEventListener("click", () => useWebImage(r, im));
+        grid.append(im);
+      }
+    } catch (err) {
+      msg.textContent = `search error: ${err.message}`;
+    }
+  };
+  go.addEventListener("click", search);
+  q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
+
+  wrap.append(file, toggle, panel, chosen);
+  return { node: wrap, getValue: () => value };
 }
 
 const NUDGE_STEP = 40; // px per tap
@@ -98,35 +184,47 @@ function nudgeControl(key) {
 async function buildForm() {
   const form = $("form");
   form.replaceChildren();
-  controls = { texts: {}, images: {}, offsets: {} };
-  heroField = manifest.layout?.block?.field || null;
+  controls = { texts: {}, fontSizes: {}, images: {}, offsets: {} };
   measurer = null; measurerSize = null;
 
-  // Text fields (+ font size slider for the reflowed hero field).
+  const blocks = layoutBlocks(manifest);
+  const blockFields = new Set(blocks.map((b) => b.field));
+  const balanceFields = new Set(blocks.filter((b) => b.balance).map((b) => b.field));
+
+  // Text fields (+ a font-size slider per reflow block).
   const textKeys = Object.keys(manifest.text || {});
   if (textKeys.length) {
     const textCard = card();
     for (const key of textKeys) {
-      // The reflowed field (or the only text field) gets a multi-line textarea.
-      const isHero = key === heroField || textKeys.length === 1;
-      const input = isHero
+      // Multi-line textarea for reflow-block fields (the headlines) and single-
+      // field templates; single-line input for short fields like captions.
+      const multiline = blockFields.has(key) || textKeys.length === 1;
+      const input = multiline
         ? el("textarea", { placeholder: `${humanize(key)}…` })
         : el("input", { type: "text", placeholder: `${humanize(key)}…` });
       controls.texts[key] = input;
-      textCard.append(field(isHero ? `${humanize(key)} (Enter forces a line break)` : humanize(key), input));
-      if (isHero) input.addEventListener("input", updateEstimate);
+      textCard.append(field(multiline ? `${humanize(key)} (Enter forces a line break)` : humanize(key), input));
+      if (balanceFields.has(key)) input.addEventListener("input", updateEstimate);
     }
-    if (manifest.layout?.block) {
-      const block = manifest.layout.block;
+    // One size slider per block. A balancing (point-text) block also shows a live
+    // row-count estimate; area-text blocks (fixed-width boxes) just show px.
+    for (const block of blocks) {
       const range = el("input", { type: "range", min: 48, max: 160, step: 1, value: block.fontSizeDefault || 100 });
       const sizeOut = el("span", { textContent: range.value });
-      const rowsOut = el("span", { textContent: "–" });
-      controls.fontSize = range; controls.rows = rowsOut;
+      controls.fontSizes[block.field] = range;
       const rowEl = el("div", { className: "row" });
-      rowEl.append(range,
-        wrapPill(sizeOut, " px"), wrapPill(rowsOut, " rows"));
-      range.addEventListener("input", () => { sizeOut.textContent = range.value; updateEstimate(); });
-      textCard.append(field("Font size", rowEl));
+      rowEl.append(range, wrapPill(sizeOut, " px"));
+      if (block.balance) {
+        const rowsOut = el("span", { textContent: "–" });
+        controls.rows = rowsOut; controls.rowsBlock = block;
+        rowEl.append(wrapPill(rowsOut, " rows"));
+        range.addEventListener("input", () => { sizeOut.textContent = range.value; updateEstimate(); });
+      } else {
+        range.addEventListener("input", () => { sizeOut.textContent = range.value; });
+      }
+      // Label the slider by field when a template has more than one.
+      const label = blocks.length > 1 ? `${humanize(block.field)} size` : "Font size";
+      textCard.append(field(label, rowEl));
     }
     form.append(textCard);
   }
@@ -141,9 +239,9 @@ async function buildForm() {
       slotsHost.replaceChildren();
       controls.images = {};
       for (const slotKey of Object.keys(manifest.imageModes[controls.mode].slots)) {
-        const inp = fileInput();
-        controls.images[slotKey] = inp;
-        const f = field(humanize(slotKey), inp);
+        const picker = imagePicker();
+        controls.images[slotKey] = picker;
+        const f = field(humanize(slotKey), picker.node);
         f.append(nudgeControl(slotKey));
         slotsHost.append(f);
       }
@@ -161,8 +259,8 @@ async function buildForm() {
   const extras = card();
   let hasExtras = false;
   if (manifest.circle) {
-    controls.circle = fileInput();
-    const cf = field("Circle inset (optional)", controls.circle);
+    controls.circle = imagePicker();
+    const cf = field("Circle inset (optional)", controls.circle.node);
     cf.append(nudgeControl("circle"));
     extras.append(cf);
     hasExtras = true;
@@ -199,15 +297,15 @@ function wrapPill(span, suffix) {
 // ---- Live row estimate (same balanced wrap the render uses) ---------------
 
 async function updateEstimate() {
-  const block = manifest.layout?.block;
-  if (!block || !controls.fontSize || !controls.rows) return;
-  const size = Number(controls.fontSize.value);
+  const block = controls.rowsBlock;
+  if (!block || !controls.rows) return;
+  const size = Number(controls.fontSizes[block.field].value);
   if (measurerSize !== size) {
     measurer = await session.env.createMeasurer({ font: block.font, fontPx: size });
     measurerSize = size;
   }
   const upper = manifest.textTransform === "uppercase";
-  const raw = controls.texts[heroField]?.value || " ";
+  const raw = controls.texts[block.field]?.value || " ";
   const text = upper ? raw.toUpperCase() : raw;
   controls.rows.textContent = balanceText(text, measurer, block.width).split("\n").length;
 }
@@ -217,15 +315,26 @@ async function updateEstimate() {
 function buildRequest() {
   const req = { template: manifest.name };
   for (const [key, input] of Object.entries(controls.texts)) req[key] = input.value;
-  if (controls.fontSize) req.fontSize = Number(controls.fontSize.value);
+  // One block -> a single `fontSize`; multiple -> a per-field `fontSizes` map.
+  const blocks = layoutBlocks(manifest);
+  if (blocks.length === 1) {
+    req.fontSize = Number(controls.fontSizes[blocks[0].field].value);
+  } else if (blocks.length > 1) {
+    req.fontSizes = {};
+    for (const b of blocks) req.fontSizes[b.field] = Number(controls.fontSizes[b.field].value);
+  }
   if (controls.mode) {
     req.mode = controls.mode;
     req.images = {};
-    for (const [slot, input] of Object.entries(controls.images)) {
-      if (input.files[0]) req.images[slot] = input.files[0];
+    for (const [slot, picker] of Object.entries(controls.images)) {
+      const v = picker.getValue();
+      if (v) req.images[slot] = v;
     }
   }
-  if (controls.circle?.files[0]) req.circle = controls.circle.files[0];
+  if (controls.circle) {
+    const v = controls.circle.getValue();
+    if (v) req.circle = v;
+  }
   if (controls.tweet?.files[0]) req.tweet = controls.tweet.files[0];
   if (controls.emoji) req.emoji = controls.emoji;
 

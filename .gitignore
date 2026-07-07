@@ -1,5 +1,11 @@
-renders/*.png
+renders/
 payloads/
 __pycache__/
 *.pyc
 .idea/
+node_modules/
+package.json
+package-lock.json
+.wrangler/
+experiments/
+.env

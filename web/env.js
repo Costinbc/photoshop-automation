@@ -73,12 +73,15 @@ export function createWebEnv({ base = "" } = {}) {
       return fetchBytes(`${base}/${manifest.file}`);
     },
 
-    // ref: a picked image (Blob/File or raw bytes) or a repo-relative path.
-    // opts { maxSize, lossless } downscale large picked photos before rendering.
+    // ref: a picked image (Blob/File or raw bytes), a repo-relative path, or an
+    // absolute URL — including the "/api/fetch?url=…" image proxy behind which a
+    // web-search result lives. opts { maxSize, lossless } downscale large images.
     async loadImage(ref, opts = {}) {
       let bytes;
       if (ref instanceof Uint8Array) bytes = ref;
       else if (ref instanceof Blob) bytes = new Uint8Array(await ref.arrayBuffer());
+      else if (typeof ref === "string" && /^(https?:\/\/|\/)/.test(ref))
+        bytes = await fetchBytes(ref); // absolute URL / proxied web image — fetch as-is
       else return fetchBytes(`${base}/${ref}`); // repo asset (already sized)
       return downscale(bytes, opts);
     },
