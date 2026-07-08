@@ -77,10 +77,10 @@ function imagePicker() {
   let value = null;
   const wrap = el("div", { className: "imgpick" });
   const file = fileInput();
-  const toggle = el("button", { type: "button", className: "imgpick-toggle", textContent: "🔍 Search the web" });
+  const toggle = el("button", { type: "button", className: "imgpick-toggle", textContent: "Search the web" });
 
   const panel = el("div", { className: "search-panel hidden" });
-  const q = el("input", { type: "text", placeholder: "Search images…" });
+  const q = el("input", { type: "text", placeholder: "Search images" });
   const go = el("button", { type: "button", className: "search-go", textContent: "Go" });
   const row = el("div", { className: "search-row" });
   row.append(q, go);
@@ -103,8 +103,8 @@ function imagePicker() {
 
   const grid = el("div", { className: "search-grid" });
   const pager = el("div", { className: "search-pager hidden" });
-  const prev = el("button", { type: "button", className: "pager-btn", textContent: "‹ Prev" });
-  const next = el("button", { type: "button", className: "pager-btn", textContent: "Next ›" });
+  const prev = el("button", { type: "button", className: "pager-btn", textContent: "Prev" });
+  const next = el("button", { type: "button", className: "pager-btn", textContent: "Next" });
   const pageLabel = el("span", { className: "pager-label" });
   pager.append(prev, pageLabel, next);
   const msg = el("div", { className: "search-msg" });
@@ -112,8 +112,8 @@ function imagePicker() {
 
   const chosen = el("div", { className: "imgpick-chosen hidden" });
   const chosenImg = el("img", { alt: "selected web image" });
-  const clearBtn = el("button", { type: "button", textContent: "✕ clear" });
-  chosen.append(chosenImg, el("span", { textContent: "web image selected" }), clearBtn);
+  const clearBtn = el("button", { type: "button", textContent: "Clear" });
+  chosen.append(chosenImg, el("span", { textContent: "Web image selected" }), clearBtn);
 
   // Paged display of a single search's results: one fetch fills `results`, and
   // paging just slices it — moving between pages makes no further API calls.
@@ -177,7 +177,7 @@ function imagePicker() {
   const search = async () => {
     const term = q.value.trim();
     if (!term) return;
-    msg.textContent = "searching…";
+    msg.textContent = "Searching";
     grid.replaceChildren();
     pager.classList.add("hidden");
     results = []; page = 0;
@@ -190,7 +190,7 @@ function imagePicker() {
       const data = await res.json().catch(() => null);
       if (!data) throw new Error(`search unavailable (HTTP ${res.status})`);
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (!data.results?.length) { msg.textContent = "no results"; return; }
+      if (!data.results?.length) { msg.textContent = "No results"; return; }
       msg.textContent = "";
       results = data.results;
       renderPage();
@@ -218,7 +218,14 @@ function nudgeControl(key) {
     o[1] += dy * NUDGE_STEP;
     readout.textContent = `${o[0]}, ${o[1]}`;
   };
-  const btn = (label, title, onClick) => {
+  // Arrow buttons use a CSS triangle (no glyph); re-center is a text button.
+  const triBtn = (triClass, title, onClick) => {
+    const b = el("button", { type: "button", className: "nudge-btn", title });
+    b.append(el("span", { className: `tri ${triClass}` }));
+    b.addEventListener("click", onClick);
+    return b;
+  };
+  const textBtn = (label, title, onClick) => {
     const b = el("button", { type: "button", className: "nudge-btn", textContent: label, title });
     b.addEventListener("click", onClick);
     return b;
@@ -226,11 +233,11 @@ function nudgeControl(key) {
   const wrap = el("div", { className: "nudge" });
   wrap.append(
     el("span", { className: "nudge-label", textContent: "Frame" }),
-    btn("◀", "Left", () => bump(-1, 0)),
-    btn("▲", "Up", () => bump(0, -1)),
-    btn("▼", "Down", () => bump(0, 1)),
-    btn("▶", "Right", () => bump(1, 0)),
-    btn("⟲", "Re-center", () => { controls.offsets[key] = [0, 0]; readout.textContent = "0, 0"; }),
+    triBtn("tri-left", "Left", () => bump(-1, 0)),
+    triBtn("tri-up", "Up", () => bump(0, -1)),
+    triBtn("tri-down", "Down", () => bump(0, 1)),
+    triBtn("tri-right", "Right", () => bump(1, 0)),
+    textBtn("Reset", "Re-center", () => { controls.offsets[key] = [0, 0]; readout.textContent = "0, 0"; }),
     readout
   );
   return wrap;
@@ -255,8 +262,8 @@ async function buildForm() {
       // field templates; single-line input for short fields like captions.
       const multiline = blockFields.has(key) || textKeys.length === 1;
       const input = multiline
-        ? el("textarea", { placeholder: `${humanize(key)}…` })
-        : el("input", { type: "text", placeholder: `${humanize(key)}…` });
+        ? el("textarea", { placeholder: humanize(key) })
+        : el("input", { type: "text", placeholder: humanize(key) });
       controls.texts[key] = input;
       textCard.append(field(multiline ? `${humanize(key)} (Enter forces a line break)` : humanize(key), input));
       if (balanceFields.has(key)) input.addEventListener("input", updateEstimate);
@@ -270,7 +277,7 @@ async function buildForm() {
       const rowEl = el("div", { className: "row" });
       rowEl.append(range, wrapPill(sizeOut, " px"));
       if (block.balance) {
-        const rowsOut = el("span", { textContent: "–" });
+        const rowsOut = el("span", { textContent: "-" });
         controls.rows = rowsOut; controls.rowsBlock = block;
         rowEl.append(wrapPill(rowsOut, " rows"));
         range.addEventListener("input", () => { sizeOut.textContent = range.value; updateEstimate(); });
@@ -415,10 +422,10 @@ async function generate() {
     img.style.display = "block";
     $("download").classList.remove("hidden");
     if (navigator.canShare) $("share").classList.remove("hidden");
-    setStatus(`done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+    setStatus(`Done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
   } catch (err) {
     console.error(err);
-    setStatus(`error: ${err.message}`);
+    setStatus(`Error: ${err.message}`);
   } finally {
     $("generate").disabled = false;
   }
@@ -438,10 +445,10 @@ async function share() {
 }
 
 async function selectTemplate(id) {
-  setStatus("loading template…");
+  setStatus("Loading template");
   manifest = await session.env.loadManifest(id);
   await buildForm();
-  setStatus(session.client ? "ready" : "starting…");
+  setStatus(session.client ? "Ready" : "Starting");
 }
 
 // ---- Init -----------------------------------------------------------------
@@ -453,13 +460,17 @@ async function init() {
   const wanted = new URLSearchParams(location.search).get("template");
   const start = TEMPLATES.find((t) => t.id === wanted)?.id || TEMPLATES[0].id;
 
-  $("templatePicker").append(
-    segmented(TEMPLATES.map((t) => ({ value: t.id, label: t.label })), start, selectTemplate)
+  // Full-name dropdown (templates have descriptive names now, too long for a
+  // segmented row).
+  const picker = $("templatePicker");
+  picker.replaceChildren(
+    ...TEMPLATES.map((t) => el("option", { value: t.id, textContent: t.label, selected: t.id === start }))
   );
+  picker.addEventListener("change", () => selectTemplate(picker.value));
   await selectTemplate(start);
 
   await session.ready;
-  setStatus("ready");
+  setStatus("Ready");
   $("generate").disabled = false;
 }
 
@@ -467,4 +478,4 @@ $("generate").addEventListener("click", generate);
 $("download").addEventListener("click", download);
 $("share").addEventListener("click", share);
 
-init().catch((err) => { console.error(err); setStatus(`startup error: ${err.message}`); });
+init().catch((err) => { console.error(err); setStatus(`Startup error: ${err.message}`); });

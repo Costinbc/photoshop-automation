@@ -15,11 +15,13 @@
                background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
                padding: 16px; color: var(--text); }
     a.action:hover { border-color: var(--accent); }
-    .action-icon { font-size: 26px; line-height: 1; width: 34px; text-align: center; }
     .action-body { flex: 1; }
     .action-title { font-weight: 600; font-size: 16px; }
     .action-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
-    .action-arrow { color: var(--muted); font-size: 20px; }
+    /* Right-pointing chevron drawn in CSS (no glyph). */
+    .action-arrow { flex: none; width: 9px; height: 9px; margin-right: 4px;
+                    border-right: 2px solid var(--muted); border-top: 2px solid var(--muted); transform: rotate(45deg); }
+    a.action:hover .action-arrow { border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -27,33 +29,30 @@
   <div class="wrap">
     <div class="hero">
       <h1>Card Maker</h1>
-      <p>Make basketball quote cards, tweet reposts, and trending headlines — right from your phone.</p>
+      <p>Basketball quote cards, tweet reposts, and trending headlines, built on any phone.</p>
     </div>
 
     <div class="actions">
       <a class="action" href="/web/create.html">
-        <span class="action-icon">✏️</span>
         <span class="action-body">
           <div class="action-title">Create a post</div>
-          <div class="action-sub">Pick a template and fill it in</div>
+          <div class="action-sub">Choose a template and fill in the details.</div>
         </span>
-        <span class="action-arrow">›</span>
+        <span class="action-arrow"></span>
       </a>
       <a class="action" href="/web/templates.html">
-        <span class="action-icon">🗂️</span>
         <span class="action-body">
           <div class="action-title">Browse templates</div>
-          <div class="action-sub">See everything you can make</div>
+          <div class="action-sub">View the available templates.</div>
         </span>
-        <span class="action-arrow">›</span>
+        <span class="action-arrow"></span>
       </a>
       <a class="action" href="/web/prep.html">
-        <span class="action-icon">⬆️</span>
         <span class="action-body">
           <div class="action-title">Upload a template</div>
-          <div class="action-sub">Turn a PSD into a template</div>
+          <div class="action-sub">Turn a PSD into a reusable template.</div>
         </span>
-        <span class="action-arrow">›</span>
+        <span class="action-arrow"></span>
       </a>
     </div>
   </div>

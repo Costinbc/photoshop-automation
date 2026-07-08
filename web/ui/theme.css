@@ -34,11 +34,11 @@ body {
 label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
 .field { margin-bottom: 14px; }
 .field:last-child { margin-bottom: 0; }
-textarea, input[type=text] {
+textarea, input[type=text], select {
   width: 100%; background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; resize: vertical;
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit;
 }
-textarea { min-height: 84px; }
+textarea { min-height: 84px; resize: vertical; }
 
 button.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px;
                  padding: 14px; font: inherit; font-weight: 600; cursor: pointer; }

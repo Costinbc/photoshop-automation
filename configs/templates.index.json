@@ -1,9 +1,9 @@
 {
   "templates": [
-    { "id": "quote_big_template", "label": "Quote", "category": "Quotes" },
-    { "id": "double_quote_template", "label": "Double", "category": "Quotes" },
-    { "id": "tweet_big_simple_template", "label": "Tweet", "category": "Social" },
-    { "id": "trending_text_simple_template", "label": "Trending", "category": "Trending" },
-    { "id": "trending_mare_template", "label": "Trending Big", "category": "Trending" }
+    { "id": "quote_big_template", "label": "Basketball Quote", "thumb": "/web/thumbs/quote_big_template.png" },
+    { "id": "double_quote_template", "label": "Double Quote", "thumb": "/web/thumbs/double_quote_template.png" },
+    { "id": "tweet_big_simple_template", "label": "Tweet Repost", "thumb": "/web/thumbs/tweet_big_simple_template.png" },
+    { "id": "trending_text_simple_template", "label": "Trending Headline", "thumb": "/web/thumbs/trending_text_simple_template.png" },
+    { "id": "trending_mare_template", "label": "Trending Big", "thumb": "/web/thumbs/trending_mare_template.png" }
   ]
 }

@@ -21,7 +21,7 @@ function tile(t) {
     img.loading = "lazy";
     thumb.append(img);
   } else {
-    thumb.textContent = "🖼️"; // no thumbnail yet — prep will generate these later
+    thumb.textContent = "No preview"; // no thumbnail yet; prep will generate these later
   }
 
   const body = document.createElement("div");

@@ -166,6 +166,18 @@ export class PhotopeaClient {
       await this.runScript(
         `var dw = window._tpl.width, dh = window._tpl.height; var lh = window._ih*(${fw}/window._iw); window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${fy}+lh/2-dh/2+${offY});`
       );
+    } else if (fit === "containBox") {
+      // Fit INSIDE the box [fx,fy,fw,fh] keeping aspect: scale to fw unless that
+      // would overflow fh, in which case scale to fh (so the width drops). The
+      // image is centered horizontally in the box and top-anchored at fy (empty
+      // space falls below it). Used for the tweet: same width when it fits,
+      // scaled down when a tall screenshot would exceed the height band.
+      await this.runScript(
+        `window._sc = Math.min(${fw}/window._iw, ${fh}/window._ih); window._ph.resize(window._sc*100, window._sc*100, AnchorPosition.MIDDLECENTER);`
+      );
+      await this.runScript(
+        `var dw = window._tpl.width, dh = window._tpl.height; var ph = window._ih*window._sc; window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${fy}+ph/2-dh/2+${offY});`
+      );
     } else {
       // cover: fill the frame (crop overflow), centered, then nudged by the
       // offset. Scale up by 2*|offset| per axis so the shifted image still fully
