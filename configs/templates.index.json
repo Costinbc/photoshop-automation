@@ -1,0 +1,9 @@
+{
+  "templates": [
+    { "id": "quote_big_template", "label": "Quote", "category": "Quotes" },
+    { "id": "double_quote_template", "label": "Double", "category": "Quotes" },
+    { "id": "tweet_big_simple_template", "label": "Tweet", "category": "Social" },
+    { "id": "trending_text_simple_template", "label": "Trending", "category": "Trending" },
+    { "id": "trending_mare_template", "label": "Trending Big", "category": "Trending" }
+  ]
+}

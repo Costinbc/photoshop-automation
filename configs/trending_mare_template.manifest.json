@@ -1,0 +1,81 @@
+{
+  "name": "trending_mare_template",
+  "file": "templates/trending MARE.psd",
+  "canvas": [
+    1080,
+    1344
+  ],
+  "fonts": [
+    "impact.ttf",
+    "Franklin Gothic Heavy Regular.ttf",
+    "Haettenschweiler-Regular.ttf"
+  ],
+  "textTransform": "uppercase",
+  "text": {
+    "trending": "KYRIE SCORES WITH THE “OPE, JUST GONNA SNEAK RIGHT PAST YA”   >"
+  },
+  "layout": {
+    "block": {
+      "text": "KYRIE SCORES WITH THE “OPE, JUST GONNA SNEAK RIGHT PAST YA”   >",
+      "field": "trending",
+      "font": "impact.ttf",
+      "balance": true,
+      "width": 960,
+      "fontSizeDefault": 100,
+      "leadingRatio": 1.1,
+      "bottomY": 1210
+    }
+  },
+  "imageModes": {
+    "single": {
+      "hide": [],
+      "slots": {
+        "main": {
+          "target": "Layer 21",
+          "frame": [
+            0,
+            0,
+            1080,
+            1344
+          ]
+        }
+      }
+    }
+  },
+  "circle": {
+    "target": "Layer 22",
+    "frame": [
+      779,
+      39,
+      235,
+      235
+    ],
+    "clip": true,
+    "hideWhenEmpty": [
+      "Ellipse 1"
+    ]
+  },
+  "emoji": {
+    "follow": {
+      "field": "trending",
+      "gap": 10,
+      "dx": 0,
+      "dy": 0,
+      "scale": 1.15
+    },
+    "layers": {
+      "joy": {
+        "layer": "face-with-tears-of-joy_1f602 (1)",
+        "width": 154
+      },
+      "flushed": {
+        "layer": "flushed-face_1f633",
+        "width": 150
+      },
+      "grimacing": {
+        "layer": "grimacing-face_1f62c",
+        "width": 148
+      }
+    }
+  }
+}
