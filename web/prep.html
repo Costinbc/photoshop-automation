@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Upload a template · Card Maker</title>
+  <link rel="stylesheet" href="/web/ui/theme.css" />
+  <style>
+    /* Prep-specific styling. Shared tokens/primitives live in theme.css. */
+    header { margin: 8px 0 12px; }
+    h1 { font-size: 20px; margin: 0; font-weight: 700; }
+    h2 { font-size: 14px; margin: 0 0 10px; font-weight: 600; }
+    .steps { color: var(--muted); font-size: 13px; margin: 6px 0 0; padding-left: 18px; }
+    .steps li { margin: 2px 0; }
+
+    .drop { border: 1.5px dashed var(--line); border-radius: var(--radius); padding: 30px 16px;
+            text-align: center; color: var(--muted); cursor: pointer; background: var(--panel); }
+    .drop.drag { border-color: var(--accent); color: var(--text); }
+
+    input[type=number], input[type=text], select {
+      width: 100%; background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px;
+    }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+    /* Preview: the rendered PSD composite. */
+    .preview-box { text-align: center; }
+    .preview-box canvas { max-width: 100%; max-height: 420px; border-radius: 10px; border: 1px solid var(--line); }
+
+    /* Status / checklist. */
+    .status ul { list-style: none; margin: 0; padding: 0; }
+    .status li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 4px 0; }
+    .status .mark { width: 16px; text-align: center; flex: none; }
+    .status li.ok { color: var(--text); }
+    .status li.todo { color: var(--accent); }
+    .status li.info { color: var(--muted); }
+    .finish-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+    #finishStatus { font-size: 12px; color: var(--muted); }
+
+    /* Layers panel (Photoshop-like: top layer first). */
+    .layers { display: flex; flex-direction: column; }
+    .layer { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; overflow: hidden; background: var(--panel-2); }
+    .layer.role-static { opacity: .72; }
+    .layer.role-delete { opacity: .5; }
+    .layer-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; }
+    .layer-eye { flex: none; width: 18px; text-align: center; font-size: 13px; opacity: .8; }
+    .layer-thumb { flex: none; width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--line);
+                   background: #0a0c10 center/contain no-repeat; }
+    .layer-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .layer-name .sub { color: var(--muted); font-size: 11px; }
+    .chip { flex: none; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+            background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+    .chip.replaceable { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    .chip.static { color: var(--muted); }
+    .chip.delete { color: #e77; border-color: #613; }
+    .caret { flex: none; color: var(--muted); transition: transform .12s; }
+    .layer.open .caret { transform: rotate(90deg); }
+    .layer-body { display: none; padding: 4px 12px 12px; border-top: 1px solid var(--line); }
+    .layer.open .layer-body { display: block; }
+    .role-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+    .role-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+                border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+    .role-btn[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+    .params .field { margin-bottom: 10px; }
+    .params label { font-size: 12px; }
+    .depth-1 { margin-left: 18px; }
+    .depth-2 { margin-left: 36px; }
+    .group-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px;
+                 color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+
+    pre.manifest { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+                   padding: 12px; font-size: 12px; overflow: auto; max-height: 300px; margin: 10px 0 0; }
+    .result-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .result-links a { color: var(--accent); text-decoration: none; font-size: 13px;
+                      border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+  </style>
+</head>
+<body>
+  <nav id="nav"></nav>
+  <div class="wrap">
+    <header>
+      <h1>Upload a template</h1>
+      <ol class="steps">
+        <li>Drop in a PSD — we read it in your browser and guess each layer's job.</li>
+        <li>Click a layer to open it, then say what it should do (replaceable, static, optional, delete).</li>
+        <li>When the checklist is green, hit <strong>Finish</strong> to build the template.</li>
+      </ol>
+    </header>
+
+    <div class="card">
+      <div class="drop" id="drop">
+        <input type="file" id="file" accept=".psd" hidden />
+        <div><strong>Choose a PSD</strong> or drag it here</div>
+        <div class="hint">Read entirely in your browser — nothing is uploaded.</div>
+      </div>
+    </div>
+
+    <div id="prepStatus"></div>
+
+    <!-- Populated after a PSD is analyzed. -->
+    <div id="editor" class="hidden">
+      <div class="card preview-box" id="previewBox"></div>
+      <div class="card status" id="statusCard"></div>
+      <div class="card">
+        <h2>Layers</h2>
+        <div class="layers" id="layers"></div>
+      </div>
+      <div id="result"></div>
+    </div>
+
+    <script type="module" src="/web/prep.js"></script>
+  </div>
+</body>
+</html>

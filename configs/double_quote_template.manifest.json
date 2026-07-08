@@ -1,0 +1,44 @@
+{
+  "name": "double_quote_template",
+  "file": "templates/DOUBLE_QUOTE_TEMPLATE.psd",
+  "canvas": [1080, 1350],
+  "fonts": ["impact.ttf", "Franklin Gothic Heavy Regular.ttf"],
+  "textTransform": "uppercase",
+
+  "text": {
+    "quote_top": "QUOTE top right",
+    "caption_top": "CAPTION TOP RIGHT",
+    "quote_bottom": "QUOTE bottom left",
+    "caption_bottom": "CAPTION bottom eft"
+  },
+
+  "layout": {
+    "blocks": [
+      {
+        "text": "QUOTE top right",
+        "field": "quote_top",
+        "font": "impact.ttf",
+        "fontSizeDefault": 130,
+        "leadingRatio": 1.0,
+        "bottomY": 572
+      },
+      {
+        "text": "QUOTE bottom left",
+        "field": "quote_bottom",
+        "font": "impact.ttf",
+        "fontSizeDefault": 100,
+        "leadingRatio": 1.0,
+        "bottomY": 1236
+      }
+    ]
+  },
+
+  "imageModes": {
+    "double": {
+      "slots": {
+        "top_left":     { "target": "Jeff-Teague-vertical (1)", "frame": [0, 0, 542, 676],   "clip": true },
+        "bottom_right": { "target": "images (8)",               "frame": [539, 674, 542, 678], "clip": true }
+      }
+    }
+  }
+}
