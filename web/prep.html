@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Upload a template · Card Maker</title>
+  <title>Upload a template - Card Maker</title>
   <link rel="stylesheet" href="/web/ui/theme.css" />
   <style>
     /* Prep-specific styling. Shared tokens/primitives live in theme.css. */
@@ -28,10 +28,17 @@
     .preview-box { text-align: center; }
     .preview-box canvas { max-width: 100%; max-height: 420px; border-radius: 10px; border: 1px solid var(--line); }
 
-    /* Status / checklist. */
+    /* Status / checklist. Marks are drawn in CSS (no glyphs): a check for done,
+       a ring for to-do, a dot for info. */
     .status ul { list-style: none; margin: 0; padding: 0; }
-    .status li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 4px 0; }
-    .status .mark { width: 16px; text-align: center; flex: none; }
+    .status li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; }
+    .status .mark { width: 16px; height: 16px; flex: none; position: relative; }
+    .status li.ok .mark::after { content: ""; position: absolute; left: 5px; top: 1px; width: 4px; height: 9px;
+      border: solid #6fcf97; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+    .status li.todo .mark::after { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 8px;
+      border: 2px solid var(--accent); border-radius: 50%; }
+    .status li.info .mark::after { content: ""; position: absolute; left: 5px; top: 5px; width: 5px; height: 5px;
+      background: var(--muted); border-radius: 50%; }
     .status li.ok { color: var(--text); }
     .status li.todo { color: var(--accent); }
     .status li.info { color: var(--muted); }
@@ -44,7 +51,8 @@
     .layer.role-static { opacity: .72; }
     .layer.role-delete { opacity: .5; }
     .layer-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; }
-    .layer-eye { flex: none; width: 18px; text-align: center; font-size: 13px; opacity: .8; }
+    .layer-eye { flex: none; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+    .layer-eye.hidden-layer { opacity: .45; }
     .layer-thumb { flex: none; width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--line);
                    background: #0a0c10 center/contain no-repeat; }
     .layer-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -54,8 +62,11 @@
     .chip.replaceable { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
     .chip.static { color: var(--muted); }
     .chip.delete { color: #e77; border-color: #613; }
-    .caret { flex: none; color: var(--muted); transition: transform .12s; }
-    .layer.open .caret { transform: rotate(90deg); }
+    /* Expand caret drawn in CSS (points right, rotates down when open). */
+    .caret { flex: none; width: 7px; height: 7px; margin-right: 2px;
+             border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+             transform: rotate(-45deg); transition: transform .12s; }
+    .layer.open .caret { transform: rotate(45deg); }
     .layer-body { display: none; padding: 4px 12px 12px; border-top: 1px solid var(--line); }
     .layer.open .layer-body { display: block; }
     .role-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
@@ -82,9 +93,9 @@
     <header>
       <h1>Upload a template</h1>
       <ol class="steps">
-        <li>Drop in a PSD — we read it in your browser and guess each layer's job.</li>
-        <li>Click a layer to open it, then say what it should do (replaceable, static, optional, delete).</li>
-        <li>When the checklist is green, hit <strong>Finish</strong> to build the template.</li>
+        <li>Drop in a PSD. Every layer is detected and given a suggested role.</li>
+        <li>Open each layer and set its role: replaceable, static, optional, or delete.</li>
+        <li>When the checklist is complete, select <strong>Finish</strong> to build the template.</li>
       </ol>
     </header>
 
@@ -92,7 +103,7 @@
       <div class="drop" id="drop">
         <input type="file" id="file" accept=".psd" hidden />
         <div><strong>Choose a PSD</strong> or drag it here</div>
-        <div class="hint">Read entirely in your browser — nothing is uploaded.</div>
+        <div class="hint">Processed entirely in the browser. Nothing is uploaded.</div>
       </div>
     </div>
 

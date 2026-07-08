@@ -70,7 +70,7 @@ export function analyze(psd, fontFiles) {
   const W = psd.width, H = psd.height;
   const flat = flatten(psd.children);
 
-  const facts = [`Canvas ${W} × ${H}`];
+  const facts = [`Canvas ${W} x ${H}`];
   const fontsUsed = new Map(); // psName -> ttf | null
 
   const texts = [];  // { layer, size, area }
@@ -157,7 +157,7 @@ export function analyze(psd, fontFiles) {
   walk(psd.children, 0);
 
   // ---- AUTO facts (for the status panel) ----
-  if (circleImg && ellipse) facts.push(`Circle inset detected (“${ellipse.name}”)`);
+  if (circleImg && ellipse) facts.push(`Circle inset detected ('${ellipse.name}')`);
   const mapped = [...new Set([...fontsUsed.values()].filter(Boolean))];
   const unmatched = [...fontsUsed.entries()].filter(([, v]) => !v).map(([k]) => k);
   if (mapped.length) facts.push(`${mapped.length} font${mapped.length > 1 ? "s" : ""} matched`);

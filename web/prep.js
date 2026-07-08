@@ -70,6 +70,13 @@ let analysis = null;      // full analyzer result
 let assignments = [];     // per-layer: { ...layer, role, params }
 let meta = null;          // { id, label, category, upper } input elements
 let ppClient = null;
+// Fonts the user supplied for PostScript names with no bundled .ttf.
+// psName -> { name (filename), bytes }. Cleared on each new PSD.
+const uploadedFonts = new Map();
+
+// Resolve a text layer's font to a shipping filename: the bundled .ttf if one
+// matched, else an uploaded one (by its PostScript name), else null.
+const resolveFont = (ttf, ps) => ttf || uploadedFonts.get(ps)?.name || null;
 
 const setStatus = (m) => { const s = $("prepStatus"); if (s) s.textContent = m; };
 const onFile = (f) => handleFile(f).catch((err) => { console.error(err); setStatus(`error: ${err.message}`); });
@@ -79,7 +86,8 @@ const onFile = (f) => handleFile(f).catch((err) => { console.error(err); setStat
 async function handleFile(file) {
   psdName = file.name;
   psdBytes = new Uint8Array(await file.arrayBuffer());
-  setStatus("reading PSD…");
+  uploadedFonts.clear();
+  setStatus("Reading PSD");
   if (!agReadPsd) ({ readPsd: agReadPsd } = await import(AG_PSD_URL));
   if (!fontFiles.length) fontFiles = (await (await fetch("/configs/fonts.index.json")).json()).fonts;
 
@@ -152,34 +160,54 @@ function renderMetaAndStatus() {
   updateStatus();
 }
 
+const liText = (state, txt) =>
+  el("li", { class: state }, el("span", { class: "mark" }), el("span", { textContent: txt }));
+
+// A checklist row for one font with no bundled .ttf: an upload button, or a
+// confirmation once the user has supplied a file. Uploaded fonts are added to
+// the manifest and offered in the download bundle (drop into fonts/).
+function fontUploadRow(ps) {
+  const uploaded = uploadedFonts.get(ps);
+  if (uploaded) return liText("ok", `Font '${ps}' set to ${uploaded.name}. Add it to fonts/ when publishing.`);
+  const li = el("li", { class: "todo" });
+  const input = el("input", { type: "file", accept: ".ttf,.otf", style: "display:none" });
+  const btn = el("button", { class: "role-btn", type: "button", textContent: "Upload .ttf" });
+  btn.addEventListener("click", () => input.click());
+  input.addEventListener("change", async () => {
+    const f = input.files[0];
+    if (!f) return;
+    uploadedFonts.set(ps, { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+    updateStatus();
+  });
+  li.append(el("span", { class: "mark" }),
+    el("span", { textContent: `Font '${ps}' has no matching .ttf. ` }), btn, input);
+  return li;
+}
+
 // Live checklist derived from the current assignments + meta.
 function updateStatus() {
   const list = $("checklist");
   if (!list) return;
-  const items = [];
-  const push = (state, txt) => items.push({ state, txt });
+  const rows = [];
   const count = (role) => assignments.filter((a) => a.role === role).length;
 
-  push("ok", `Canvas ${canvasWH[0]} × ${canvasWH[1]}`);
-  if (analysis.fontsUnmatched.length) push("todo", `${analysis.fontsUnmatched.length} font(s) without a .ttf match: ${analysis.fontsUnmatched.join(", ")}`);
-  else if (analysis.fonts.length) push("ok", `${analysis.fonts.length} font(s) matched`);
+  rows.push(liText("ok", `Canvas ${canvasWH[0]} x ${canvasWH[1]}`));
+  if (analysis.fonts.length) rows.push(liText("ok", `${analysis.fonts.length} font(s) matched`));
+  for (const ps of analysis.fontsUnmatched) rows.push(fontUploadRow(ps)); // one row each, with upload
 
   const replaceable = assignments.filter((a) => ["text", "photo", "circle", "emoji"].includes(a.role)).length;
-  push("info", `${replaceable} replaceable · ${count("static")} static · ${count("optional")} optional · ${count("delete")} to delete`);
+  rows.push(liText("info", `${replaceable} replaceable, ${count("static")} static, ${count("optional")} optional, ${count("delete")} to delete`));
 
   const hasHeadline = assignments.some((a) => a.role === "text" && a.params.isHeadline);
-  if (hasHeadline) push("ok", "Auto-fit headline set");
-  else push("info", "No auto-fit headline (optional)");
+  rows.push(liText(hasHeadline ? "ok" : "info", hasHeadline ? "Auto-fit headline set" : "No auto-fit headline (optional)"));
 
   const emojiNoHeadline = count("emoji") > 0 && !hasHeadline;
-  if (emojiNoHeadline) push("todo", "Reaction emoji needs an auto-fit headline to follow");
+  if (emojiNoHeadline) rows.push(liText("todo", "Reaction emoji needs an auto-fit headline to follow"));
 
   const idOk = !!slug(meta.id.value);
-  if (!idOk) push("todo", "Give the template an ID");
+  if (!idOk) rows.push(liText("todo", "Give the template an ID"));
 
-  list.replaceChildren(...items.map(({ state, txt }) =>
-    el("li", { class: state }, el("span", { class: "mark", textContent: state === "ok" ? "✓" : state === "todo" ? "•" : "·" }),
-      el("span", { textContent: txt }))));
+  list.replaceChildren(...rows);
 
   const ready = idOk && !emojiNoHeadline;
   const btn = $("finishBtn");
@@ -205,7 +233,7 @@ function renderLayers() {
 }
 
 function groupRow(a) {
-  return el("div", { class: `group-row depth-${a.depth}` }, el("span", { textContent: "▸ " + a.name }));
+  return el("div", { class: `group-row depth-${a.depth}` }, el("span", { textContent: a.name }));
 }
 
 function chip(role) {
@@ -213,15 +241,26 @@ function chip(role) {
   return el("span", { class: `chip ${c.cls}`, textContent: c.label });
 }
 
+// Visibility indicator drawn as an inline SVG (no glyph): an eye, or an eye with
+// a slash when the layer is hidden.
+function eyeIcon(hidden) {
+  const s = document.createElement("span");
+  s.className = "layer-eye" + (hidden ? " hidden-layer" : "");
+  s.innerHTML = hidden
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.4 5.2A9 9 0 0121 12a9 9 0 01-1.7 2.7M6.2 6.3A9 9 0 003 12a9 9 0 0013 6.6"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  return s;
+}
+
 function layerRow(a, i) {
   const wrap = el("div", { class: `layer role-${a.role} depth-${a.depth}` });
   const thumb = a.thumb;
-  const eye = el("span", { class: "layer-eye", textContent: a.hidden ? "◌" : "👁" });
+  const eye = eyeIcon(a.hidden);
   const nameEl = el("div", { class: "layer-name" },
-    el("span", { textContent: a.name.length > 34 ? a.name.slice(0, 32) + "…" : a.name }),
+    el("span", { textContent: a.name.length > 34 ? a.name.slice(0, 32) + "..." : a.name }),
     el("div", { class: "sub", textContent: a.kind }));
   let chipEl = chip(a.role);
-  const caret = el("span", { class: "caret", textContent: "▸" });
+  const caret = el("span", { class: "caret" });
   const head = el("div", { class: "layer-head" },
     eye,
     el("div", { class: "layer-thumb", style: thumb ? `background-image:url(${thumb})` : "" }),
@@ -275,7 +314,7 @@ function paramsFor(a) {
     fs.addEventListener("input", () => { p.frame[2] = p.frame[3] = Number(fs.value); });
     box.append(el("label", { textContent: "Circle frame (x, y, size)" }),
       el("div", { class: "three" }, fx, fy, fs),
-      el("div", { class: "hint", textContent: `Clipped onto “${p.base}”, which hides when no photo is supplied.` }));
+      el("div", { class: "hint", textContent: `Clipped onto '${p.base}', which hides when no photo is supplied.` }));
   } else if (a.role === "text") {
     box.append(field("Field key", bindText("key", "text")));
     if (p.isHeadline) {
@@ -291,7 +330,7 @@ function paramsFor(a) {
         el("div", { class: "three" }, field("Width", bindNum("width")), field("Leading", bindNum("leading")), field("Default size", bindNum("size"))));
       box.append(el("div", { class: "hint", textContent: "This text auto-fits & reflows (it's the biggest text)." }), adv);
     } else {
-      box.append(el("div", { class: "hint", textContent: "Editable text — the user retypes the words; size & position stay." }));
+      box.append(el("div", { class: "hint", textContent: "Editable text. The wording can change; size and position stay fixed." }));
     }
   } else if (a.role === "emoji") {
     box.append(field("Choice key", bindText("key", "emoji")), field("Native width (px)", bindNum("width")),
@@ -326,10 +365,11 @@ function buildManifest() {
       renames.push({ old: a.name, new: key });
       m.text = m.text || {};
       m.text[key] = key;
-      if (p.font) fonts.add(p.font);
+      const font = resolveFont(p.font, p.fontPs); // bundled .ttf or an uploaded one
+      if (font) fonts.add(font);
       if (p.isHeadline) {
         headlineField = key;
-        const block = { text: key, field: key, font: p.font, balance: true,
+        const block = { text: key, field: key, font, balance: true,
           width: Number(p.width), fontSizeDefault: Number(p.size), leadingRatio: Number(p.leading) };
         block[p.anchorKind] = Number(p.anchorVal ?? p[p.anchorKind]);
         m.layout = { block };
@@ -351,6 +391,9 @@ function buildManifest() {
   if (Object.keys(emojiLayers).length) {
     m.emoji = { follow: { field: headlineField || "headline", gap: 10, dx: 0, dy: 0, scale: 1.15 }, layers: emojiLayers };
   }
+  // Uploaded fonts cover unmatched PostScript names used by the PSD's text (incl.
+  // kept static text), so every one belongs in the manifest's font list.
+  for (const { name } of uploadedFonts.values()) fonts.add(name);
   m.fonts = [...fonts];
   return { manifest: m, renames, deletes };
 }
@@ -412,29 +455,35 @@ async function finish() {
   const say = (m) => { fs.textContent = m; };
   try {
     const { manifest, renames, deletes } = buildManifest();
-    say("cleaning PSD in Photopea…");
+    say("Cleaning PSD in Photopea");
     const cleanedPsd = await cleanupAndExport(renames, deletes);
-    say("rendering thumbnail…");
+    say("Rendering thumbnail");
     let thumb = null;
     try { thumb = await makeThumbnail(); } catch (e) { console.warn("thumbnail failed", e); }
-    say("saving…");
+    say("Saving");
     await saveTemplate({ id: manifest.name, label: meta.label.value || manifest.name,
       category: meta.category.value || null, manifest, psdBytes: cleanedPsd, thumbBytes: thumb });
 
     const json = JSON.stringify(manifest, null, 2);
+    // Any uploaded fonts go in the bundle too (drop into fonts/).
+    const fontLinks = [...uploadedFonts.values()].map((f) =>
+      downloadLink(f.bytes, f.name, "font/ttf", `Download ${f.name}`));
+    const publishNote = "Saved to this browser. To publish for everyone, download the bundle and commit it " +
+      "(PSD to templates/, manifest to configs/" + (fontLinks.length ? ", fonts to fonts/" : "") +
+      "), then add an entry to configs/templates.index.json.";
     out.append(
-      el("h2", { textContent: "Ready ✓", style: "margin-top:14px" }),
-      el("div", { class: "hint", textContent:
-        "Saved to this browser. To publish for everyone, download the bundle and commit it (PSD → templates/, manifest → configs/), then add an entry to configs/templates.index.json." }),
+      el("h2", { textContent: "Ready", style: "margin-top:14px" }),
+      el("div", { class: "hint", textContent: publishNote }),
       el("pre", { class: "manifest", textContent: json }),
       el("div", { class: "result-links" },
-        downloadLink(new TextEncoder().encode(json), `${manifest.name}.manifest.json`, "application/json", "⬇ manifest.json"),
-        downloadLink(cleanedPsd, `${manifest.name}.psd`, "image/vnd.adobe.photoshop", "⬇ cleaned PSD"),
-        ...(thumb ? [downloadLink(thumb, `${manifest.name}.png`, "image/png", "⬇ thumbnail")] : [])));
-    say("done");
+        downloadLink(new TextEncoder().encode(json), `${manifest.name}.manifest.json`, "application/json", "Download manifest.json"),
+        downloadLink(cleanedPsd, `${manifest.name}.psd`, "image/vnd.adobe.photoshop", "Download cleaned PSD"),
+        ...(thumb ? [downloadLink(thumb, `${manifest.name}.png`, "image/png", "Download thumbnail")] : []),
+        ...fontLinks));
+    say("Done");
   } catch (err) {
     console.error(err);
-    say(`error: ${err.message}`);
+    say(`Error: ${err.message}`);
   } finally {
     btn.disabled = false;
   }

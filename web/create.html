@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Create a post · Card Maker</title>
+  <title>Create a post - Card Maker</title>
   <link rel="stylesheet" href="/web/ui/theme.css" />
   <style>
     /* Card-maker-specific styling. Shared tokens/primitives live in theme.css. */
@@ -21,8 +21,15 @@
     .nudge { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .nudge-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
     .nudge-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
-                 border-radius: 8px; padding: 6px 11px; font: inherit; font-size: 14px; line-height: 1; cursor: pointer; }
+                 border-radius: 8px; padding: 6px 11px; font: inherit; font-size: 13px; line-height: 1; cursor: pointer;
+                 display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 28px; }
     .nudge-btn:active { transform: scale(0.94); }
+    /* Direction arrows drawn in CSS (no glyphs). */
+    .tri { display: inline-block; width: 0; height: 0; }
+    .tri-left { border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-right: 7px solid currentColor; }
+    .tri-right { border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 7px solid currentColor; }
+    .tri-up { border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 7px solid currentColor; }
+    .tri-down { border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid currentColor; }
     /* Image picker: file upload + web-search grid */
     .imgpick-toggle { margin-top: 8px; background: var(--panel-2); color: var(--text);
                       border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
@@ -66,12 +73,12 @@
   <div class="wrap">
     <header>
       <h1>Create a post</h1>
-      <span id="status">starting…</span>
+      <span id="status">Starting</span>
     </header>
 
     <div class="card">
-      <label>Template</label>
-      <div class="seg" id="templatePicker" role="group" aria-label="Template"></div>
+      <label for="templatePicker">Template</label>
+      <select id="templatePicker" aria-label="Template"></select>
     </div>
 
     <div id="form"></div>
