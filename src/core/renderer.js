@@ -227,19 +227,16 @@ async function applyTweet(request, manifest, offsets, client, env, log) {
   if (!(request.tweet && manifest.tweet)) return;
   const t = manifest.tweet;
   const off = offsets.tweet || [0, 0];
-  // Keep the tweet lossless (PNG) so the black-key stays clean (JPEG artifacts
-  // would lift the pure-black background and fringe the edges).
+  const zooms = request.zoom || {};
   let bytes = await env.loadImage(request.tweet, { maxSize: 1600, lossless: true });
-  // keyBlack removes the dark background, erases the tweet UI (X.com watermark /
-  // ... in the top-right, rects in image-width fractions), reports a watermark
-  // check, and crops to the tweet's content box (trims empty margins so every
-  // screenshot normalizes to the same content-anchored image).
-  if (t.keyBlack || t.clear) bytes = await env.keyBlack(bytes, { clear: t.clear || [], log });
+  const clearRects = request.tweetKeepWatermark ? [] : (t.clear || []);
+  if (t.keyBlack || clearRects.length) bytes = await env.keyBlack(bytes, { clear: clearRects, log });
   await client.placeImage(bytes, {
     name: "IMG_tweet",
     frame: [...t.frame, off[0], off[1]],
     above: t.target,
     fit: t.fit || "cover",
+    zoom: zooms.tweet || 1,
     hideTarget: true,
   });
   log("tweet placed");
@@ -257,6 +254,11 @@ async function applyEmoji(request, manifest, client, log, ctx = {}) {
     throw new Error(`Unknown emoji '${request.emoji}' (options: ${Object.keys(layers).join(", ")})`);
   }
 
+  const offsets = request.offsets || {};
+  const zooms = request.zoom || {};
+  const off = offsets.emoji || [0, 0];
+  const zoomFactor = zooms.emoji || 1;
+
   // Show the chosen emoji, hide the rest.
   for (const [key, entry] of Object.entries(layers)) {
     await client.setVisible(emojiLayerName(entry), key === request.emoji);
@@ -266,26 +268,26 @@ async function applyEmoji(request, manifest, client, log, ctx = {}) {
   const follow = manifest.emoji.follow;
   if (follow && ctx.place) {
     const { place, block, size, canvas } = ctx;
-    if (ctx.scalePct && Math.abs(ctx.scalePct - 100) > 0.5) {
-      await client.scaleLayer(emojiLayerName(chosen), ctx.scalePct);
+    const totalScale = (ctx.scalePct || 100) * zoomFactor;
+    if (Math.abs(totalScale - 100) > 0.5) {
+      await client.scaleLayer(emojiLayerName(chosen), totalScale);
     }
     const leading = Math.round(size * (block.leadingRatio || 1));
-    // The headline is center-justified on the canvas center, so every line is
-    // centered on that x (ink bounds can't give it — a line ending in the blank
-    // NBSP filler has no ink there; textItem.position is in ruler units, not px).
-    // Vertical extent DOES come from ink bounds (every line has ink -> safe).
     const cx = canvas[0] / 2;
     const tb = await client.bounds(block.text);
     const capHeight = tb.h - (place.lineCount - 1) * leading;
     const lineCenterY = tb.t + capHeight / 2 + place.lineIndex * leading;
     const lineLeft = cx - place.lineWidth / 2;
-    const targetX = lineLeft + place.beforeWidth + place.fillerWidth / 2 + (follow.dx || 0);
-    const targetY = lineCenterY + (follow.dy || 0);
+    const targetX = lineLeft + place.beforeWidth + place.fillerWidth / 2 + (follow.dx || 0) + off[0];
+    const targetY = lineCenterY + (follow.dy || 0) + off[1];
 
     const eb = await client.bounds(emojiLayerName(chosen));
     await client.translateLayer(emojiLayerName(chosen), targetX - eb.cx, targetY - eb.cy);
     log(`emoji '${request.emoji}' placed inline on line ${place.lineIndex}`);
   } else {
+    // Fixed-position emoji: apply user offset + zoom nudge.
+    if (zoomFactor !== 1) await client.scaleLayer(emojiLayerName(chosen), zoomFactor * 100);
+    if (off[0] || off[1]) await client.translateLayer(emojiLayerName(chosen), off[0], off[1]);
     log(`emoji '${request.emoji}' selected`);
   }
 }
