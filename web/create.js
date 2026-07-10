@@ -205,20 +205,34 @@ function imagePicker() {
   return { node: wrap, getValue: () => value };
 }
 
-const NUDGE_STEP = 40; // px per tap
+const NUDGE_STEP = 40; //   px per tap (move)
+const ZOOM_STEP = 0.1; //   factor per tap (zoom)
+const ZOOM_MIN = 0.5, ZOOM_MAX = 3; // clamp: 0.5x reveals more, 3x crops in
 
-// Framing nudge for one image slot: arrows move the picked image within its
-// crop; the offset is applied at render time (request.offsets[key]).
-function nudgeControl(key) {
+// Framing control for one image slot: arrows move the picked image within its
+// crop and -/+ zoom it. Applied at render time (request.offsets[key] +
+// request.zoom[key]).
+function frameControl(key) {
   controls.offsets[key] = [0, 0];
+  controls.zoom[key] = 1;
   const readout = el("span", { className: "pill", textContent: "0, 0" });
+  const zoomOut = el("span", { className: "pill", textContent: "100%" });
+  const update = () => {
+    const o = controls.offsets[key];
+    readout.textContent = `${o[0]}, ${o[1]}`;
+    zoomOut.textContent = `${Math.round(controls.zoom[key] * 100)}%`;
+  };
   const bump = (dx, dy) => {
     const o = controls.offsets[key];
     o[0] += dx * NUDGE_STEP;
     o[1] += dy * NUDGE_STEP;
-    readout.textContent = `${o[0]}, ${o[1]}`;
+    update();
   };
-  // Arrow buttons use a CSS triangle (no glyph); re-center is a text button.
+  const zoomBy = (d) => {
+    controls.zoom[key] = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(controls.zoom[key] + d).toFixed(2)));
+    update();
+  };
+  // Arrow buttons use a CSS triangle (no glyph); zoom + re-center are text buttons.
   const triBtn = (triClass, title, onClick) => {
     const b = el("button", { type: "button", className: "nudge-btn", title });
     b.append(el("span", { className: `tri ${triClass}` }));
@@ -237,8 +251,16 @@ function nudgeControl(key) {
     triBtn("tri-up", "Up", () => bump(0, -1)),
     triBtn("tri-down", "Down", () => bump(0, 1)),
     triBtn("tri-right", "Right", () => bump(1, 0)),
-    textBtn("Reset", "Re-center", () => { controls.offsets[key] = [0, 0]; readout.textContent = "0, 0"; }),
-    readout
+    el("span", { className: "nudge-label", textContent: "Zoom" }),
+    textBtn("-", "Zoom out", () => zoomBy(-ZOOM_STEP)),
+    textBtn("+", "Zoom in", () => zoomBy(ZOOM_STEP)),
+    textBtn("Reset", "Re-center and reset zoom", () => {
+      controls.offsets[key] = [0, 0];
+      controls.zoom[key] = 1;
+      update();
+    }),
+    readout,
+    zoomOut
   );
   return wrap;
 }
@@ -246,7 +268,7 @@ function nudgeControl(key) {
 async function buildForm() {
   const form = $("form");
   form.replaceChildren();
-  controls = { texts: {}, fontSizes: {}, images: {}, offsets: {} };
+  controls = { texts: {}, fontSizes: {}, images: {}, offsets: {}, zoom: {} };
   measurer = null; measurerSize = null;
 
   const blocks = layoutBlocks(manifest);
@@ -304,7 +326,7 @@ async function buildForm() {
         const picker = imagePicker();
         controls.images[slotKey] = picker;
         const f = field(humanize(slotKey), picker.node);
-        f.append(nudgeControl(slotKey));
+        f.append(frameControl(slotKey));
         slotsHost.append(f);
       }
     };
@@ -323,7 +345,7 @@ async function buildForm() {
   if (manifest.circle) {
     controls.circle = imagePicker();
     const cf = field("Circle inset (optional)", controls.circle.node);
-    cf.append(nudgeControl("circle"));
+    cf.append(frameControl("circle"));
     extras.append(cf);
     hasExtras = true;
   }
@@ -400,14 +422,18 @@ function buildRequest() {
   if (controls.tweet?.files[0]) req.tweet = controls.tweet.files[0];
   if (controls.emoji) req.emoji = controls.emoji;
 
-  // Framing offsets — only for slots that actually have a picked image.
+  // Framing offsets + zoom — only for slots that actually have a picked image.
   const offsets = {};
+  const zoom = {};
   const used = [...Object.keys(req.images || {}), ...(req.circle ? ["circle"] : [])];
   for (const key of used) {
     const o = controls.offsets[key];
     if (o && (o[0] || o[1])) offsets[key] = o;
+    const z = controls.zoom[key];
+    if (z && z !== 1) zoom[key] = z;
   }
   if (Object.keys(offsets).length) req.offsets = offsets;
+  if (Object.keys(zoom).length) req.zoom = zoom;
   return req;
 }
 

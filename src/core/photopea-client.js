@@ -85,6 +85,16 @@ export class PhotopeaClient {
     return this.t.readLastBinary();
   }
 
+  // Export the active document as PSD bytes (used by prep / template authoring
+  // to write a cleaned template back out — the rename/delete survives the round
+  // trip, validated in the prep flow).
+  async exportPSD() {
+    const before = await this.t.binaryCount();
+    await this.runScript(`app.activeDocument.saveToOE("psd");`);
+    await this._waitFor(async () => (await this.t.binaryCount()) > before);
+    return this.t.readLastBinary();
+  }
+
   // Close every open document (fonts stay installed). Call between renders so
   // the next openDocument() starts from a pristine template as documents[0].
   async closeAll() {
@@ -127,6 +137,24 @@ export class PhotopeaClient {
     );
   }
 
+  // Create a solid-filled rectangle layer covering `frame` ([x,y,w,h]), stacked
+  // directly above `above`. Used as a clip BASE for synthesized split slots: a
+  // photo placed above it and clipped shows only within this rectangle, so a
+  // single-image template can be split into halves without pre-authored PSD
+  // layers. The fill colour is irrelevant (the photo covers it entirely).
+  async fillRect(name, frame, above) {
+    const [x, y, w, h] = frame;
+    await this.runScript(
+      `${PRELUDE}\nvar _d = window._tpl; var _L = _d.artLayers.add(); _L.name = ${js(name)};\n` +
+        `_d.selection.select([[${x},${y}],[${x + w},${y}],[${x + w},${y + h}],[${x},${y + h}]]);\n` +
+        `var _c = new SolidColor(); _c.rgb.red = 0; _c.rgb.green = 0; _c.rgb.blue = 0;\n` +
+        `_d.selection.fill(_c); _d.selection.deselect();`
+    );
+    await this.runScript(
+      `${PRELUDE}\nfindLayer(window._tpl, ${js(name)}).move(findLayer(window._tpl, ${js(above)}), ElementPlacement.PLACEBEFORE);`
+    );
+  }
+
   // Actual rendered pixel bounds of a layer (reliable for mid-canvas layers).
   async bounds(layer) {
     const s = await this.evalString(
@@ -142,10 +170,15 @@ export class PhotopeaClient {
   //   above      : stack directly above this layer
   //   clip       : clip to the layer below (clip-mask slots)
   //   fit        : "cover" (default) | "containWidth" (fit width, keep aspect,
-  //                top-anchored — for tweet screenshots)
+  //                top-anchored) | "containBox" / "containBoxBottom" (fit inside
+  //                [x,y,w,h] keeping aspect, top- or bottom-anchored — the tweet
+  //                uses containBoxBottom so it hugs the bottom of the card)
+  //   zoom       : cover-fit only — multiply the cover scale (1 = fill, >1 zoom
+  //                in/crop more, <1 zoom out/reveal more). Pairs with the offset
+  //                for full framing control of a photo within its slot.
   //   hideTarget : hide `above` after placing (transparent overlays that must
   //                fully replace, not sit on top of, the original)
-  async placeImage(bytes, { name, frame, above, clip, fit = "cover", hideTarget } = {}) {
+  async placeImage(bytes, { name, frame, above, clip, fit = "cover", zoom = 1, hideTarget } = {}) {
     const [fx, fy, fw, fh, offX = 0, offY = 0] = frame;
     await this.openDocument(bytes);
     await this.runScript(
@@ -166,24 +199,32 @@ export class PhotopeaClient {
       await this.runScript(
         `var dw = window._tpl.width, dh = window._tpl.height; var lh = window._ih*(${fw}/window._iw); window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${fy}+lh/2-dh/2+${offY});`
       );
-    } else if (fit === "containBox") {
+    } else if (fit === "containBox" || fit === "containBoxBottom") {
       // Fit INSIDE the box [fx,fy,fw,fh] keeping aspect: scale to fw unless that
       // would overflow fh, in which case scale to fh (so the width drops). The
-      // image is centered horizontally in the box and top-anchored at fy (empty
-      // space falls below it). Used for the tweet: same width when it fits,
-      // scaled down when a tall screenshot would exceed the height band.
+      // image is centered horizontally in the box. Anchoring:
+      //   containBox       -> top-anchored at fy (empty space falls BELOW it)
+      //   containBoxBottom -> bottom-anchored at fy+fh (empty space ABOVE it)
+      // The tweet uses containBoxBottom: it keeps a fixed width when it fits and
+      // is scaled down only when a tall screenshot would exceed the height band,
+      // sitting at the bottom of the card with open space above for the photo.
+      const cy =
+        fit === "containBoxBottom"
+          ? `${fy}+${fh}-ph/2` // image bottom at fy+fh
+          : `${fy}+ph/2`; //      image top at fy
       await this.runScript(
         `window._sc = Math.min(${fw}/window._iw, ${fh}/window._ih); window._ph.resize(window._sc*100, window._sc*100, AnchorPosition.MIDDLECENTER);`
       );
       await this.runScript(
-        `var dw = window._tpl.width, dh = window._tpl.height; var ph = window._ih*window._sc; window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${fy}+ph/2-dh/2+${offY});`
+        `var dw = window._tpl.width, dh = window._tpl.height; var ph = window._ih*window._sc; window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${cy}-dh/2+${offY});`
       );
     } else {
       // cover: fill the frame (crop overflow), centered, then nudged by the
       // offset. Scale up by 2*|offset| per axis so the shifted image still fully
-      // covers the frame (no exposed edge). Zero offset -> plain cover.
+      // covers the frame (no exposed edge), then by `zoom` (1 = plain cover,
+      // >1 crops in, <1 reveals more). Zero offset + zoom 1 -> plain cover.
       await this.runScript(
-        `var s = Math.max((${fw}+2*Math.abs(${offX}))/window._iw, (${fh}+2*Math.abs(${offY}))/window._ih) * 100; window._ph.resize(s, s, AnchorPosition.MIDDLECENTER);`
+        `var s = Math.max((${fw}+2*Math.abs(${offX}))/window._iw, (${fh}+2*Math.abs(${offY}))/window._ih) * ${zoom} * 100; window._ph.resize(s, s, AnchorPosition.MIDDLECENTER);`
       );
       await this.runScript(
         `var dw = window._tpl.width, dh = window._tpl.height; window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${fy}+${fh}/2-dh/2+${offY});`

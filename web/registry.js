@@ -4,7 +4,7 @@
 // Today it reads a static index committed next to the manifests. This is a
 // deliberate SEAM: when the app grows a backend, swap the fetch below for
 // `fetch('/api/templates')` (scoped per user) and no caller changes. Keep the
-// returned shape stable: { id, label, category?, thumb? }.
+// returned shape stable: { id, label, thumb? }.
 
 const INDEX_URL = "/configs/templates.index.json";
 
@@ -21,7 +21,7 @@ export async function listTemplates() {
   return cache;
 }
 
-// One template's registry entry (label/category/thumb), or null if unknown.
+// One template's registry entry (label/thumb), or null if unknown.
 export async function getTemplate(id) {
   return (await listTemplates()).find((t) => t.id === id) || null;
 }

@@ -40,13 +40,12 @@ function tx(db, mode) {
 // Persist a prepped template (its manifest + cleaned PSD + thumbnail) so it's
 // usable immediately in this browser. `psdBytes`/`thumbBytes` are Uint8Arrays;
 // IndexedDB stores them as-is (no base64). Returns the stored record.
-export async function saveTemplate({ id, label, category, manifest, psdBytes, thumbBytes }) {
+export async function saveTemplate({ id, label, manifest, psdBytes, thumbBytes }) {
   if (!id) throw new Error("saveTemplate: id is required");
   const record = {
     id,
     ownerId: currentUser()?.id ?? null, // null = shared/public (matches the future data model)
     label: label || manifest?.name || id,
-    category: category || null,
     manifest,
     psdBytes,
     thumbBytes,
@@ -62,9 +61,9 @@ export async function saveTemplate({ id, label, category, manifest, psdBytes, th
   return record;
 }
 
-// Registry-shaped list of locally-saved templates ({id, label, category}), so a
-// gallery can merge these with the static index. Bytes are omitted here — fetch
-// the full record with getSavedTemplate when actually rendering.
+// Registry-shaped list of locally-saved templates ({id, label}), so a gallery
+// can merge these with the static index. Bytes are omitted here — fetch the full
+// record with getSavedTemplate when actually rendering.
 export async function listSavedTemplates() {
   const db = await openDb();
   const all = await new Promise((resolve, reject) => {
@@ -73,7 +72,7 @@ export async function listSavedTemplates() {
     req.onerror = () => reject(req.error);
   });
   db.close();
-  return all.map(({ id, label, category }) => ({ id, label, category }));
+  return all.map(({ id, label }) => ({ id, label }));
 }
 
 // Full stored record (including psdBytes/thumbBytes/manifest), or null.

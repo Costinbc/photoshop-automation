@@ -1,0 +1,69 @@
+{
+  "name": "triple_quote_template",
+  "file": "templates/TRIPLE_QUOTE_TEMPLATE.psd",
+  "canvas": [1080, 1350],
+  "fonts": ["impact.ttf", "Franklin Gothic Heavy Regular.ttf"],
+  "textTransform": "uppercase",
+
+  "text": {
+    "quote_1": "quote_1",
+    "caption_1": "cap_1",
+    "quote_2": "quote_2",
+    "caption_2": "cap_2",
+    "quote_3": "quote_3",
+    "caption_3": "cap_3"
+  },
+
+  "layout": {
+    "blocks": [
+      {
+        "text": "quote_1",
+        "field": "quote_1",
+        "font": "impact.ttf",
+        "fontSizeDefault": 80,
+        "leadingRatio": 1.0,
+        "bottomY": 300,
+        "below": [
+          { "layer": "sep_1", "gap": 32 },
+          { "layer": "cap_1", "gap": 58 }
+        ]
+      },
+      {
+        "text": "quote_2",
+        "field": "quote_2",
+        "font": "impact.ttf",
+        "fontSizeDefault": 80,
+        "leadingRatio": 1.0,
+        "bottomY": 750,
+        "below": [
+          { "layer": "sep_2", "gap": 32 },
+          { "layer": "cap_2", "gap": 58 }
+        ]
+      },
+      {
+        "text": "quote_3",
+        "field": "quote_3",
+        "font": "impact.ttf",
+        "fontSizeDefault": 80,
+        "leadingRatio": 1.0,
+        "bottomY": 1200,
+        "below": [
+          { "layer": "sep_3", "gap": 32 },
+          { "layer": "cap_3", "gap": 58 }
+        ]
+      }
+    ]
+  },
+
+  "imageModes": {
+    "triple": {
+      "hide": [],
+      "anchor": "backgorund",
+      "slots": {
+        "photo_1": { "frame": [0, 0, 540, 450],     "synthClip": true },
+        "photo_2": { "frame": [540, 450, 540, 450],  "synthClip": true },
+        "photo_3": { "frame": [0, 900, 540, 450],    "synthClip": true }
+      }
+    }
+  }
+}

@@ -24,8 +24,8 @@
 
   "tweet": {
     "target": "tweet with background color selected and removed",
-    "frame": [40, 40, 1000, 500],
-    "fit": "containBox",
+    "frame": [40, 810, 1000, 405],
+    "fit": "containBoxBottom",
     "keyBlack": true,
     "clear": [[0.74, 0.15, 0.26, 0.21]]
   }

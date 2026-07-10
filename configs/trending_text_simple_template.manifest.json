@@ -28,6 +28,14 @@
       "slots": {
         "main": { "target": "background player image", "frame": [0, 0, 1080, 1344] }
       }
+    },
+    "split": {
+      "hide": ["background player image"],
+      "anchor": "background player image",
+      "slots": {
+        "left":  { "frame": [0, 0, 540, 1344],   "synthClip": true },
+        "right": { "frame": [540, 0, 540, 1344], "synthClip": true }
+      }
     }
   },
 
