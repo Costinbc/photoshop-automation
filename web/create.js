@@ -351,7 +351,17 @@ async function buildForm() {
   }
   if (manifest.tweet) {
     controls.tweet = fileInput();
-    extras.append(field("Tweet screenshot (dark mode)", controls.tweet));
+    const tf = field("Tweet screenshot (dark mode)", controls.tweet);
+    tf.append(frameControl("tweet"));
+    if (manifest.tweet.clear?.length) {
+      const wmId = `wm-${Math.random().toString(36).slice(2)}`;
+      const wmCb = el("input", { type: "checkbox", id: wmId, checked: true });
+      const wmLbl = el("label", { className: "search-opt", htmlFor: wmId, textContent: " Remove watermark" });
+      wmLbl.prepend(wmCb);
+      controls.tweetClearWm = wmCb;
+      tf.append(wmLbl);
+    }
+    extras.append(tf);
     hasExtras = true;
   }
   if (manifest.emoji) {
@@ -359,7 +369,7 @@ async function buildForm() {
     controls.emoji = keys[0];
     const emojiField = field("Emoji",
       segmented(keys.map((k) => ({ value: k, label: humanize(k) })), controls.emoji, (k) => { controls.emoji = k; }));
-    // Inline emoji flows with the text: tell the user how to place it.
+    emojiField.append(frameControl("emoji"));
     if (manifest.emoji.follow) {
       emojiField.append(el("p", { className: "hint",
         textContent: "Type [e] in the text where the emoji should sit. Omit it to put the emoji at the end." }));
@@ -420,12 +430,18 @@ function buildRequest() {
     if (v) req.circle = v;
   }
   if (controls.tweet?.files[0]) req.tweet = controls.tweet.files[0];
+  if (controls.tweetClearWm && !controls.tweetClearWm.checked) req.tweetKeepWatermark = true;
   if (controls.emoji) req.emoji = controls.emoji;
 
-  // Framing offsets + zoom — only for slots that actually have a picked image.
+  // Framing offsets + zoom — all layers that have a frame control.
   const offsets = {};
   const zoom = {};
-  const used = [...Object.keys(req.images || {}), ...(req.circle ? ["circle"] : [])];
+  const used = [
+    ...Object.keys(req.images || {}),
+    ...(req.circle ? ["circle"] : []),
+    ...(req.tweet ? ["tweet"] : []),
+    ...(req.emoji ? ["emoji"] : []),
+  ];
   for (const key of used) {
     const o = controls.offsets[key];
     if (o && (o[0] || o[1])) offsets[key] = o;

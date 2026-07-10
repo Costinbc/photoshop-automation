@@ -194,7 +194,7 @@ export class PhotopeaClient {
     }
     if (fit === "containWidth") {
       await this.runScript(
-        `var s = (${fw}/window._iw) * 100; window._ph.resize(s, s, AnchorPosition.MIDDLECENTER);`
+        `var s = (${fw}/window._iw) * ${zoom} * 100; window._ph.resize(s, s, AnchorPosition.MIDDLECENTER);`
       );
       await this.runScript(
         `var dw = window._tpl.width, dh = window._tpl.height; var lh = window._ih*(${fw}/window._iw); window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${fy}+lh/2-dh/2+${offY});`
@@ -213,7 +213,7 @@ export class PhotopeaClient {
           ? `${fy}+${fh}-ph/2` // image bottom at fy+fh
           : `${fy}+ph/2`; //      image top at fy
       await this.runScript(
-        `window._sc = Math.min(${fw}/window._iw, ${fh}/window._ih); window._ph.resize(window._sc*100, window._sc*100, AnchorPosition.MIDDLECENTER);`
+        `window._sc = Math.min(${fw}/window._iw, ${fh}/window._ih) * ${zoom}; window._ph.resize(window._sc*100, window._sc*100, AnchorPosition.MIDDLECENTER);`
       );
       await this.runScript(
         `var dw = window._tpl.width, dh = window._tpl.height; var ph = window._ih*window._sc; window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${cy}-dh/2+${offY});`
