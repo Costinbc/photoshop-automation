@@ -6,8 +6,15 @@
 // "phone behavior" to keep in sync.
 
 import { RenderSession } from "/web/session.js";
+import { PRELUDE } from "/src/core/prelude.js";
 
 const session = new RenderSession({ base: "" }); // served from the repo root
+
+// Expose the live session + prelude for advanced drivers (e.g. one-off template
+// authoring scripts that run custom Photopea ops via session.client). The CLI
+// render path only uses __runRender below; these are inert for it.
+window.__session = session;
+window.__PRELUDE = PRELUDE;
 
 window.__runRender = async (requestJson) => {
   const request = JSON.parse(requestJson);

@@ -171,16 +171,32 @@ async function applyImages(request, manifest, offsets, client, env, log) {
 
   for (const layer of mode.hide || []) await client.setVisible(layer, false);
 
+  const zooms = request.zoom || {};
   for (const [slotKey, ref] of Object.entries(request.images || {})) {
     const slot = mode.slots[slotKey];
     if (!slot) throw new Error(`Mode '${request.mode}' has no image slot '${slotKey}'`);
     const off = offsets[slotKey] || [0, 0];
+
+    // Two ways a slot clips its photo:
+    //  - `target`+`clip`: clip to a PSD layer authored for it (quote/tweet split).
+    //  - `synthClip`: no such layer exists (single-image templates) — synthesize a
+    //    clip base filling `frame` just above `mode.anchor`, then clip to that. Lets
+    //    any single-photo template offer split without per-PSD layer surgery.
+    let target = slot.target;
+    let clip = !!slot.clip;
+    if (slot.synthClip) {
+      target = `SPLIT_${slotKey}`;
+      await client.fillRect(target, slot.frame, mode.anchor);
+      clip = true;
+    }
+
     // Photos only need to cover ~1080px; downscaling keeps Photopea fast.
     await client.placeImage(await env.loadImage(ref, { maxSize: 2000 }), {
       name: `IMG_${slotKey}`,
       frame: [...slot.frame, off[0], off[1]],
-      above: slot.target,
-      clip: !!slot.clip,
+      above: target,
+      clip,
+      zoom: zooms[slotKey] || 1,
     });
     log(`image slot '${slotKey}' placed`);
   }
@@ -198,6 +214,7 @@ async function applyCircle(request, manifest, offsets, client, env, log) {
       frame: [...c.frame, off[0], off[1]],
       above: c.target,
       clip: !!c.clip,
+      zoom: (request.zoom && request.zoom.circle) || 1,
     });
     log("circle image placed");
   } else if (c.hideWhenEmpty) {
@@ -213,9 +230,11 @@ async function applyTweet(request, manifest, offsets, client, env, log) {
   // Keep the tweet lossless (PNG) so the black-key stays clean (JPEG artifacts
   // would lift the pure-black background and fringe the edges).
   let bytes = await env.loadImage(request.tweet, { maxSize: 1600, lossless: true });
-  // keyBlack removes the dark background; `clear` erases the tweet UI buttons
-  // (X / ... / Grok) in the top-right corner (rects in image-width fractions).
-  if (t.keyBlack || t.clear) bytes = await env.keyBlack(bytes, { clear: t.clear || [] });
+  // keyBlack removes the dark background, erases the tweet UI (X.com watermark /
+  // ... in the top-right, rects in image-width fractions), reports a watermark
+  // check, and crops to the tweet's content box (trims empty margins so every
+  // screenshot normalizes to the same content-anchored image).
+  if (t.keyBlack || t.clear) bytes = await env.keyBlack(bytes, { clear: t.clear || [], log });
   await client.placeImage(bytes, {
     name: "IMG_tweet",
     frame: [...t.frame, off[0], off[1]],

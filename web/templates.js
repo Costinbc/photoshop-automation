@@ -29,14 +29,11 @@ function tile(t) {
   const label = document.createElement("div");
   label.className = "tpl-label";
   label.textContent = t.label || humanize(t.id);
-  const cat = document.createElement("div");
-  cat.className = "tpl-cat";
-  cat.textContent = t.category || "";
   const use = document.createElement("a");
   use.className = "tpl-use";
   use.href = `/web/create.html?template=${encodeURIComponent(t.id)}`;
   use.textContent = "Use";
-  body.append(label, cat, use);
+  body.append(label, use);
 
   card.append(thumb, body);
   return card;

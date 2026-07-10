@@ -140,14 +140,13 @@ function renderMetaAndStatus() {
   // Template meta (required decisions live with the status).
   const id = text(slug(psdName.replace(/\.psd$/i, "")));
   const label = text("");
-  const category = text("");
   const upper = el("input", { type: "checkbox", checked: true });
-  meta = { id, label, category, upper };
+  meta = { id, label, upper };
   id.addEventListener("input", updateStatus);
   host.append(
     el("h2", { textContent: "Template" }),
     field("ID (stable, used in URLs & filenames)", id),
-    el("div", { class: "two" }, field("Label", label), field("Category", category)),
+    field("Label", label),
     el("label", { class: "check", style: "display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:6px" },
       upper, el("span", { textContent: "Force UPPERCASE text" })),
     el("h2", { textContent: "Status", style: "margin-top:14px" }),
@@ -462,7 +461,7 @@ async function finish() {
     try { thumb = await makeThumbnail(); } catch (e) { console.warn("thumbnail failed", e); }
     say("Saving");
     await saveTemplate({ id: manifest.name, label: meta.label.value || manifest.name,
-      category: meta.category.value || null, manifest, psdBytes: cleanedPsd, thumbBytes: thumb });
+      manifest, psdBytes: cleanedPsd, thumbBytes: thumb });
 
     const json = JSON.stringify(manifest, null, 2);
     // Any uploaded fonts go in the bundle too (drop into fonts/).
