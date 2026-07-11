@@ -4,6 +4,7 @@
 // re-download the (large) PSD and fonts.
 
 import { keyBlackCanvas } from "./keyblack-web.js";
+import { applyEffects } from "./effects.js";
 
 // Downscale a picked image so it's no larger than `maxSize` on its longest side
 // before it goes to Photopea. Phone photos are many MB / 12MP; pasting those
@@ -82,8 +83,10 @@ export function createWebEnv({ base = "" } = {}) {
       else if (ref instanceof Blob) bytes = new Uint8Array(await ref.arrayBuffer());
       else if (typeof ref === "string" && /^(https?:\/\/|\/)/.test(ref))
         bytes = await fetchBytes(ref); // absolute URL / proxied web image — fetch as-is
-      else return fetchBytes(`${base}/${ref}`); // repo asset (already sized)
-      return downscale(bytes, opts);
+      else bytes = await fetchBytes(`${base}/${ref}`); // repo asset (already sized)
+      bytes = await downscale(bytes, opts);
+      if (opts.effects) bytes = await applyEffects(bytes, opts.effects, base);
+      return bytes;
     },
 
     keyBlack(bytes, opts = {}) {

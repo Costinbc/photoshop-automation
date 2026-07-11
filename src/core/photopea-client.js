@@ -123,6 +123,11 @@ export class PhotopeaClient {
       `${PRELUDE}\nvar ti = findLayer(window._tpl, ${js(layer)}).textItem; ti.useAutoLeading = false; ti.autoLeading = false; ti.leading = ${Number(value)};`
     );
   }
+  async setVerticalScale(layer, pct) {
+    await this.runScript(
+      `${PRELUDE}\nfindLayer(window._tpl, ${js(layer)}).textItem.verticalScale = ${Number(pct)};`
+    );
+  }
   async setVisible(layer, on) {
     await this.runScript(`${PRELUDE}\nsetVisible(window._tpl, ${js(layer)}, ${on ? "true" : "false"});`);
   }

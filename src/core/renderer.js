@@ -138,6 +138,8 @@ async function reflow(request, manifest, client, log) {
   for (const L of blocks) {
     const size = sizeFor(request, L);
     if (size) await client.setFontSize(L.text, size);
+    const vScale = request.verticalScales?.[L.field] ?? request.verticalScale;
+    if (vScale != null && vScale !== 100) await client.setVerticalScale(L.text, vScale);
     // Tight, size-relative line spacing so multi-line text uses the space.
     if (size && L.leadingRatio) await client.setLeading(L.text, Math.round(size * L.leadingRatio));
 
@@ -190,8 +192,7 @@ async function applyImages(request, manifest, offsets, client, env, log) {
       clip = true;
     }
 
-    // Photos only need to cover ~1080px; downscaling keeps Photopea fast.
-    await client.placeImage(await env.loadImage(ref, { maxSize: 2000 }), {
+    await client.placeImage(await env.loadImage(ref, { maxSize: 2000, effects: request.effects }), {
       name: `IMG_${slotKey}`,
       frame: [...slot.frame, off[0], off[1]],
       above: target,

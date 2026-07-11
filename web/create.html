@@ -62,6 +62,11 @@
     .imgpick-chosen:not(.hidden) { display: flex; }
     .imgpick-chosen img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
     .imgpick-chosen button { background: transparent; color: var(--accent); border: 0; font: inherit; cursor: pointer; margin-left: auto; }
+    /* Photo effects toggle grid */
+    .fx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+    .fx-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text);
+                 cursor: pointer; user-select: none; margin: 0; padding: 6px 0; }
+    .fx-toggle input { accent-color: var(--accent); margin: 0; }
     .actions { display: flex; gap: 10px; margin-top: 4px; }
     button.primary { flex: 1; }
     .preview { margin-top: 14px; text-align: center; }

@@ -268,7 +268,7 @@ function frameControl(key) {
 async function buildForm() {
   const form = $("form");
   form.replaceChildren();
-  controls = { texts: {}, fontSizes: {}, images: {}, offsets: {}, zoom: {} };
+  controls = { texts: {}, fontSizes: {}, verticalScales: {}, images: {}, offsets: {}, zoom: {}, effects: {} };
   measurer = null; measurerSize = null;
 
   const blocks = layoutBlocks(manifest);
@@ -307,8 +307,18 @@ async function buildForm() {
         range.addEventListener("input", () => { sizeOut.textContent = range.value; });
       }
       // Label the slider by field when a template has more than one.
-      const label = blocks.length > 1 ? `${humanize(block.field)} size` : "Font size";
-      textCard.append(field(label, rowEl));
+      const sizeLabel = blocks.length > 1 ? `${humanize(block.field)} size` : "Font size";
+      textCard.append(field(sizeLabel, rowEl));
+
+      // Vertical scale slider (text height without affecting width).
+      const vsRange = el("input", { type: "range", min: 50, max: 200, step: 1, value: 100 });
+      const vsOut = el("span", { textContent: "100" });
+      controls.verticalScales[block.field] = vsRange;
+      const vsRow = el("div", { className: "row" });
+      vsRow.append(vsRange, wrapPill(vsOut, "%"));
+      vsRange.addEventListener("input", () => { vsOut.textContent = vsRange.value; });
+      const vsLabel = blocks.length > 1 ? `${humanize(block.field)} height` : "Text height";
+      textCard.append(field(vsLabel, vsRow));
     }
     form.append(textCard);
   }
@@ -379,6 +389,32 @@ async function buildForm() {
   }
   if (hasExtras) form.append(extras);
 
+  // Photo effects toggles — applied to base images before placement.
+  if (manifest.imageModes) {
+    const FX = [
+      { key: "clarity", label: "Clarity boost" },
+      { key: "edgeGlow", label: "Edge glow" },
+      { key: "halftone", label: "Halftone light" },
+      { key: "grit", label: "Grit light" },
+      { key: "condensation", label: "Condensation" },
+      { key: "topographic", label: "Topo lines" },
+      { key: "lightLeak", label: "Light leak" },
+      { key: "triangles", label: "Triangles" },
+    ];
+    const fxCard = card();
+    const fxGrid = el("div", { className: "fx-grid" });
+    for (const fx of FX) {
+      const id = `fx-${fx.key}`;
+      const cb = el("input", { type: "checkbox", id });
+      const lbl = el("label", { className: "fx-toggle", htmlFor: id });
+      lbl.append(cb, document.createTextNode(fx.label));
+      controls.effects[fx.key] = cb;
+      fxGrid.append(lbl);
+    }
+    fxCard.append(el("label", { textContent: "Photo effects" }), fxGrid);
+    form.append(fxCard);
+  }
+
   await updateEstimate();
 }
 
@@ -413,9 +449,17 @@ function buildRequest() {
   const blocks = layoutBlocks(manifest);
   if (blocks.length === 1) {
     req.fontSize = Number(controls.fontSizes[blocks[0].field].value);
+    const vs = Number(controls.verticalScales[blocks[0].field]?.value);
+    if (vs && vs !== 100) req.verticalScale = vs;
   } else if (blocks.length > 1) {
     req.fontSizes = {};
-    for (const b of blocks) req.fontSizes[b.field] = Number(controls.fontSizes[b.field].value);
+    const verticalScales = {};
+    for (const b of blocks) {
+      req.fontSizes[b.field] = Number(controls.fontSizes[b.field].value);
+      const vs = Number(controls.verticalScales[b.field]?.value);
+      if (vs && vs !== 100) verticalScales[b.field] = vs;
+    }
+    if (Object.keys(verticalScales).length) req.verticalScales = verticalScales;
   }
   if (controls.mode) {
     req.mode = controls.mode;
@@ -450,6 +494,13 @@ function buildRequest() {
   }
   if (Object.keys(offsets).length) req.offsets = offsets;
   if (Object.keys(zoom).length) req.zoom = zoom;
+
+  const effects = {};
+  for (const [key, cb] of Object.entries(controls.effects || {})) {
+    if (cb.checked) effects[key] = true;
+  }
+  if (Object.keys(effects).length) req.effects = effects;
+
   return req;
 }
 
