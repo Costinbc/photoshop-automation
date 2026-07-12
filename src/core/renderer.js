@@ -140,8 +140,8 @@ async function reflow(request, manifest, client, log) {
     if (size) await client.setFontSize(L.text, size);
     const vScale = request.verticalScales?.[L.field] ?? request.verticalScale;
     if (vScale != null && vScale !== 100) await client.setVerticalScale(L.text, vScale);
-    // Tight, size-relative line spacing so multi-line text uses the space.
-    if (size && L.leadingRatio) await client.setLeading(L.text, Math.round(size * L.leadingRatio));
+    const vFactor = (vScale != null && vScale !== 100) ? vScale / 100 : 1;
+    if (size && L.leadingRatio) await client.setLeading(L.text, Math.round(size * L.leadingRatio * vFactor));
 
     // Anchor the re-measured text block: centered on a midline (fills the region)
     // or bottom-anchored (grows upward, e.g. a quote hugging its attribution line).
