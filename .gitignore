@@ -1,4 +1,6 @@
 renders/
+test/
+web/test*.html
 payloads/
 __pycache__/
 *.pyc

@@ -1,7 +1,0 @@
-{
-  "template": "tweet_big_simple_template",
-  "mode": "single",
-  "images": { "main": "assets/big_a.jpg" },
-  "tweet": "assets/demo_tweet_dark.png",
-  "output": "renders/tweet.png"
-}

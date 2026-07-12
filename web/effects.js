@@ -44,7 +44,7 @@ function edgeGlow(canvas, ctx) {
   const temp = new OffscreenCanvas(w, h);
   const tctx = temp.getContext("2d");
 
-  const grad = tctx.createLinearGradient(w * 0.72, 0, w, 0);
+  const grad = tctx.createLinearGradient(w * 0.55, 0, w, 0);
   grad.addColorStop(0, "transparent");
   grad.addColorStop(1, "rgb(255,140,40)");
   tctx.fillStyle = grad;
@@ -52,16 +52,16 @@ function edgeGlow(canvas, ctx) {
 
   tctx.globalCompositeOperation = "destination-in";
   const v = tctx.createLinearGradient(0, 0, 0, h);
-  v.addColorStop(0, "rgba(255,255,255,0)");
-  v.addColorStop(0.15, "white");
-  v.addColorStop(0.85, "white");
-  v.addColorStop(1, "rgba(255,255,255,0)");
+  v.addColorStop(0, "rgba(255,255,255,0.1)");
+  v.addColorStop(0.2, "white");
+  v.addColorStop(0.8, "white");
+  v.addColorStop(1, "rgba(255,255,255,0.1)");
   tctx.fillStyle = v;
   tctx.fillRect(0, 0, w, h);
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.22;
+  ctx.globalAlpha = 0.35;
   ctx.drawImage(temp, 0, 0);
   ctx.restore();
 }
@@ -70,12 +70,12 @@ function edgeGlow(canvas, ctx) {
 // Subtle white halftone dot overlay. Dot size varies with local brightness.
 function halftoneLight(canvas, ctx) {
   const w = canvas.width, h = canvas.height;
-  const spacing = 14, maxDot = 5, opacity = 0.06;
+  const spacing = 14, maxDot = 5;
   const src = ctx.getImageData(0, 0, w, h);
 
   const temp = new OffscreenCanvas(w, h);
   const tctx = temp.getContext("2d");
-  tctx.fillStyle = `rgba(255,255,255,${opacity})`;
+  tctx.fillStyle = "rgba(255,255,255,0.15)";
 
   for (let row = 0; row <= h / spacing; row++) {
     for (let col = 0; col <= w / spacing; col++) {
@@ -132,11 +132,13 @@ async function condensationGlass(canvas, ctx, base) {
 
   // 40% blur blend
   const blur = new OffscreenCanvas(w, h);
-  blur.getContext("2d").filter = "blur(2px)";
-  blur.getContext("2d").drawImage(canvas, 0, 0);
+  const bctx = blur.getContext("2d");
+  bctx.filter = "blur(2px)";
+  bctx.drawImage(canvas, 0, 0);
+  ctx.save();
   ctx.globalAlpha = 0.4;
   ctx.drawImage(blur, 0, 0);
-  ctx.globalAlpha = 1;
+  ctx.restore();
 
   // Water drops overlay
   const url = `${base}/assets/overlays/water_drops.png`;
@@ -149,7 +151,7 @@ async function condensationGlass(canvas, ctx, base) {
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.12;
+  ctx.globalAlpha = 0.18;
   ctx.drawImage(drops, 0, 0, w, h);
   ctx.restore();
 
@@ -165,7 +167,7 @@ async function condensationGlass(canvas, ctx, base) {
 // Procedural contour lines from multi-scale noise, drawn via marching squares.
 function topographicLines(canvas, ctx) {
   const w = canvas.width, h = canvas.height;
-  const numLines = 18, opacity = 0.08;
+  const numLines = 18;
 
   // Work at 1/4 resolution for speed
   const ds = 4;
@@ -204,8 +206,8 @@ function topographicLines(canvas, ctx) {
 
   const sx = w / sw, sy = h / sh;
   ctx.save();
-  ctx.strokeStyle = `rgba(255,255,255,${opacity})`;
-  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 1.5;
 
   for (let ln = 0; ln < numLines; ln++) {
     const thr = (ln + 0.5) / numLines;
@@ -249,30 +251,24 @@ function topographicLines(canvas, ctx) {
 }
 
 // ── Light leak ──────────────────────────────────────────────────────────────
-// Diagonal gradient wash (warm-to-cool), screen-blended. Stronger at edges,
-// weaker near center.
+// Diagonal gradient wash (warm-to-pink), screen-blended. Visible across the
+// whole image with a soft falloff — not masked out in the center.
 function lightLeak(canvas, ctx) {
   const w = canvas.width, h = canvas.height;
   const temp = new OffscreenCanvas(w, h);
   const tctx = temp.getContext("2d");
 
+  // Full diagonal gradient — no radial mask punching a hole in the middle
   const grad = tctx.createLinearGradient(0, h, w, 0);
   grad.addColorStop(0, "rgb(255,160,60)");
-  grad.addColorStop(1, "rgb(255,80,120)");
+  grad.addColorStop(0.5, "rgb(255,100,90)");
+  grad.addColorStop(1, "rgb(255,80,180)");
   tctx.fillStyle = grad;
-  tctx.fillRect(0, 0, w, h);
-
-  tctx.globalCompositeOperation = "destination-in";
-  const rg = tctx.createRadialGradient(w * 0.65, h * 0.3, 0, w * 0.65, h * 0.3, Math.max(w, h) * 0.7);
-  rg.addColorStop(0, "rgba(255,255,255,0)");
-  rg.addColorStop(0.4, "rgba(255,255,255,0.4)");
-  rg.addColorStop(1, "white");
-  tctx.fillStyle = rg;
   tctx.fillRect(0, 0, w, h);
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.20;
+  ctx.globalAlpha = 0.32;
   ctx.drawImage(temp, 0, 0);
   ctx.restore();
 }
@@ -281,12 +277,12 @@ function lightLeak(canvas, ctx) {
 // Subtle triangle grid overlay at low opacity.
 function geometricTriangles(canvas, ctx) {
   const w = canvas.width, h = canvas.height;
-  const size = 80, opacity = 0.07;
+  const size = 80;
   const rowH = size * 0.866;
 
   ctx.save();
-  ctx.strokeStyle = `rgba(255,255,255,${opacity})`;
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
   for (let row = 0; row <= h / rowH + 1; row++) {
     for (let col = 0; col <= w / size + 1; col++) {
