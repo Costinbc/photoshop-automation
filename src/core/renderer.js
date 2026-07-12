@@ -140,7 +140,8 @@ async function reflow(request, manifest, client, log) {
     if (size) await client.setFontSize(L.text, size);
     const vScale = request.verticalScales?.[L.field] ?? request.verticalScale;
     if (vScale != null && vScale !== 100) await client.setVerticalScale(L.text, vScale);
-    const vFactor = (vScale != null && vScale !== 100) ? vScale / 100 : 1;
+    const vDelta = (vScale != null && vScale !== 100) ? (vScale - 100) / 100 : 0;
+    const vFactor = 1 + vDelta * 0.25;
     if (size && L.leadingRatio) await client.setLeading(L.text, Math.round(size * L.leadingRatio * vFactor));
 
     // Anchor the re-measured text block: centered on a midline (fills the region)

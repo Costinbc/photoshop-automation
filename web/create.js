@@ -215,12 +215,16 @@ const ZOOM_MIN = 0.5, ZOOM_MAX = 3; // clamp: 0.5x reveals more, 3x crops in
 function frameControl(key) {
   controls.offsets[key] = [0, 0];
   controls.zoom[key] = 1;
-  const readout = el("span", { className: "pill", textContent: "0, 0" });
-  const zoomOut = el("span", { className: "pill", textContent: "100%" });
+
+  const offX = el("input", { type: "number", className: "nudge-input", value: "0", title: "X offset (px)" });
+  const offY = el("input", { type: "number", className: "nudge-input", value: "0", title: "Y offset (px)" });
+  const zoomIn = el("input", { type: "number", className: "nudge-input nudge-input-zoom", value: "100", title: "Zoom (%)", min: Math.round(ZOOM_MIN * 100), max: Math.round(ZOOM_MAX * 100), step: "10" });
+
   const update = () => {
     const o = controls.offsets[key];
-    readout.textContent = `${o[0]}, ${o[1]}`;
-    zoomOut.textContent = `${Math.round(controls.zoom[key] * 100)}%`;
+    offX.value = o[0];
+    offY.value = o[1];
+    zoomIn.value = Math.round(controls.zoom[key] * 100);
   };
   const bump = (dx, dy) => {
     const o = controls.offsets[key];
@@ -232,7 +236,15 @@ function frameControl(key) {
     controls.zoom[key] = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(controls.zoom[key] + d).toFixed(2)));
     update();
   };
-  // Arrow buttons use a CSS triangle (no glyph); zoom + re-center are text buttons.
+
+  offX.addEventListener("change", () => { controls.offsets[key][0] = parseInt(offX.value, 10) || 0; });
+  offY.addEventListener("change", () => { controls.offsets[key][1] = parseInt(offY.value, 10) || 0; });
+  zoomIn.addEventListener("change", () => {
+    const v = parseInt(zoomIn.value, 10) || 100;
+    controls.zoom[key] = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v / 100));
+    update();
+  });
+
   const triBtn = (triClass, title, onClick) => {
     const b = el("button", { type: "button", className: "nudge-btn", title });
     b.append(el("span", { className: `tri ${triClass}` }));
@@ -251,16 +263,16 @@ function frameControl(key) {
     triBtn("tri-up", "Up", () => bump(0, -1)),
     triBtn("tri-down", "Down", () => bump(0, 1)),
     triBtn("tri-right", "Right", () => bump(1, 0)),
+    offX, offY,
     el("span", { className: "nudge-label", textContent: "Zoom" }),
     textBtn("-", "Zoom out", () => zoomBy(-ZOOM_STEP)),
     textBtn("+", "Zoom in", () => zoomBy(ZOOM_STEP)),
+    zoomIn,
     textBtn("Reset", "Re-center and reset zoom", () => {
       controls.offsets[key] = [0, 0];
       controls.zoom[key] = 1;
       update();
     }),
-    readout,
-    zoomOut
   );
   return wrap;
 }
