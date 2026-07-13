@@ -238,4 +238,5 @@ export class PhotopeaClient {
     if (clip) await this.runScript(`window._ph.grouped = true;`);
     if (hideTarget && above) await this.setVisible(above, false);
   }
+
 }
