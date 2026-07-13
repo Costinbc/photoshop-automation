@@ -287,30 +287,35 @@ async function buildForm() {
   const blockFields = new Set(blocks.map((b) => b.field));
   const balanceFields = new Set(blocks.filter((b) => b.balance).map((b) => b.field));
 
-  // Text fields (+ a font-size slider per reflow block).
+  // Text fields (textarea each — Enter inserts a real newline in every field,
+  // captions included). Each field gets a size slider: reflow blocks use their
+  // block default + wide range, other fields (captions) use a caption-sized
+  // default. Reflow blocks additionally get a height (vertical-scale) slider.
   const textKeys = Object.keys(manifest.text || {});
+  const CAPTION_DEFAULT = 40;
   if (textKeys.length) {
     const textCard = card();
     for (const key of textKeys) {
-      // Multi-line textarea for reflow-block fields (the headlines) and single-
-      // field templates; single-line input for short fields like captions.
-      const multiline = blockFields.has(key) || textKeys.length === 1;
-      const input = multiline
-        ? el("textarea", { placeholder: humanize(key) })
-        : el("input", { type: "text", placeholder: humanize(key) });
+      const block = blocks.find((b) => b.field === key);
+      const input = el("textarea", { placeholder: humanize(key) });
       controls.texts[key] = input;
-      textCard.append(field(multiline ? `${humanize(key)} (Enter forces a line break)` : humanize(key), input));
+      textCard.append(field(`${humanize(key)} (Enter forces a line break)`, input));
       if (balanceFields.has(key)) input.addEventListener("input", updateEstimate);
-    }
-    // One size slider per block. A balancing (point-text) block also shows a live
-    // row-count estimate; area-text blocks (fixed-width boxes) just show px.
-    for (const block of blocks) {
-      const range = el("input", { type: "range", min: 48, max: 160, step: 1, value: block.fontSizeDefault || 100 });
+
+      const isBlock = !!block;
+      const defaultSize = isBlock ? (block.fontSizeDefault || 100) : (manifest.captionSizes?.[key] || CAPTION_DEFAULT);
+      const range = el("input", {
+        type: "range",
+        min: isBlock ? 48 : 16,
+        max: isBlock ? 160 : 120,
+        step: 1,
+        value: defaultSize,
+      });
       const sizeOut = el("span", { textContent: range.value });
-      controls.fontSizes[block.field] = range;
+      controls.fontSizes[key] = range;
       const rowEl = el("div", { className: "row" });
       rowEl.append(range, wrapPill(sizeOut, " px"));
-      if (block.balance) {
+      if (block?.balance) {
         const rowsOut = el("span", { textContent: "-" });
         controls.rows = rowsOut; controls.rowsBlock = block;
         rowEl.append(wrapPill(rowsOut, " rows"));
@@ -318,19 +323,22 @@ async function buildForm() {
       } else {
         range.addEventListener("input", () => { sizeOut.textContent = range.value; });
       }
-      // Label the slider by field when a template has more than one.
-      const sizeLabel = blocks.length > 1 ? `${humanize(block.field)} size` : "Font size";
+      // Label by field when multiple text fields exist (so "Caption size" vs
+      // "Quote size" is unambiguous).
+      const sizeLabel = textKeys.length > 1 ? `${humanize(key)} size` : "Font size";
       textCard.append(field(sizeLabel, rowEl));
 
-      // Vertical scale slider (text height without affecting width).
-      const vsRange = el("input", { type: "range", min: 50, max: 200, step: 1, value: 100 });
-      const vsOut = el("span", { textContent: "100" });
-      controls.verticalScales[block.field] = vsRange;
-      const vsRow = el("div", { className: "row" });
-      vsRow.append(vsRange, wrapPill(vsOut, "%"));
-      vsRange.addEventListener("input", () => { vsOut.textContent = vsRange.value; });
-      const vsLabel = blocks.length > 1 ? `${humanize(block.field)} height` : "Text height";
-      textCard.append(field(vsLabel, vsRow));
+      // Vertical scale (text height without affecting width) — reflow blocks only.
+      if (isBlock) {
+        const vsRange = el("input", { type: "range", min: 50, max: 200, step: 1, value: 100 });
+        const vsOut = el("span", { textContent: "100" });
+        controls.verticalScales[key] = vsRange;
+        const vsRow = el("div", { className: "row" });
+        vsRow.append(vsRange, wrapPill(vsOut, "%"));
+        vsRange.addEventListener("input", () => { vsOut.textContent = vsRange.value; });
+        const vsLabel = blocks.length > 1 ? `${humanize(key)} height` : "Text height";
+        textCard.append(field(vsLabel, vsRow));
+      }
     }
     form.append(textCard);
   }
@@ -457,22 +465,19 @@ async function updateEstimate() {
 function buildRequest() {
   const req = { template: manifest.name };
   for (const [key, input] of Object.entries(controls.texts)) req[key] = input.value;
-  // One block -> a single `fontSize`; multiple -> a per-field `fontSizes` map.
-  const blocks = layoutBlocks(manifest);
-  if (blocks.length === 1) {
-    req.fontSize = Number(controls.fontSizes[blocks[0].field].value);
-    const vs = Number(controls.verticalScales[blocks[0].field]?.value);
-    if (vs && vs !== 100) req.verticalScale = vs;
-  } else if (blocks.length > 1) {
-    req.fontSizes = {};
-    const verticalScales = {};
-    for (const b of blocks) {
-      req.fontSizes[b.field] = Number(controls.fontSizes[b.field].value);
-      const vs = Number(controls.verticalScales[b.field]?.value);
-      if (vs && vs !== 100) verticalScales[b.field] = vs;
-    }
-    if (Object.keys(verticalScales).length) req.verticalScales = verticalScales;
+  // Every text field now has a size slider (blocks + captions). Send a
+  // per-field `fontSizes` map — the renderer applies non-block sizes directly
+  // via setFontSize and reflow blocks pick their size up through sizeFor.
+  req.fontSizes = {};
+  for (const key of Object.keys(controls.fontSizes)) {
+    req.fontSizes[key] = Number(controls.fontSizes[key].value);
   }
+  const verticalScales = {};
+  for (const [key, ctrl] of Object.entries(controls.verticalScales)) {
+    const vs = Number(ctrl.value);
+    if (vs && vs !== 100) verticalScales[key] = vs;
+  }
+  if (Object.keys(verticalScales).length) req.verticalScales = verticalScales;
   if (controls.mode) {
     req.mode = controls.mode;
     req.images = {};

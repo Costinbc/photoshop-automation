@@ -105,6 +105,13 @@ export async function render(request, { client, env, log = noop, installedFonts 
       value = balanceText(value, measure, fieldBlock.width);
     }
     await client.setText(layer, value);
+
+    // Non-block text fields (captions and other secondary text) can also carry
+    // a per-field font size from `fontSizes[key]`. Block sizes are applied in
+    // reflow() alongside leading/anchoring, so skip them here.
+    if (!fieldBlock && request.fontSizes && request.fontSizes[key] != null) {
+      await client.setFontSize(layer, request.fontSizes[key]);
+    }
     log(`text '${key}' set`);
   }
 
