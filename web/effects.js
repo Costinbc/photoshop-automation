@@ -474,6 +474,31 @@ function smokePlumes(canvas, ctx) {
   ctx.restore();
 }
 
+// ── Spotlight ───────────────────────────────────────────────────────────────
+// Radial darkening centered on the subject's centroid — reads as a stage
+// spotlight on the player. Runs in the mask-protected overlay pass so the
+// subject stays untouched while the background dims around them.
+// `center` is { cx, cy, radius } computed from the subject mask; falls back
+// to image center if not provided.
+function spotlight(canvas, ctx, center) {
+  const w = canvas.width, h = canvas.height;
+  const cx = center?.cx ?? w / 2;
+  const cy = center?.cy ?? h / 2;
+  // Inner radius: bright zone that fades to darkness. Sized off the subject
+  // so a large subject has a wider bright halo than a small one.
+  const innerR = center?.radius ?? Math.min(w, h) * 0.25;
+  const outerR = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy));
+
+  const grad = ctx.createRadialGradient(cx, cy, innerR * 0.5, cx, cy, outerR);
+  grad.addColorStop(0, "rgba(0,0,0,0)");
+  grad.addColorStop(0.35, "rgba(0,0,0,0.35)");
+  grad.addColorStop(1, "rgba(0,0,0,0.75)");
+  ctx.save();
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
 // ── Geometric triangles ─────────────────────────────────────────────────────
 // Subtle triangle grid overlay at low opacity.
 function geometricTriangles(canvas, ctx) {
@@ -513,7 +538,49 @@ const EFFECTS = {
   brush: brushStrokes,
   spatter: inkSpatter,
   smoke: smokePlumes,
+  spotlight,
 };
+
+// Compute the subject centroid + a size-appropriate spotlight radius from the
+// mask bytes. Draws the mask to a small canvas, iterates alpha as weight.
+// Returns coords in TARGET (canvas) space so the spotlight can be positioned
+// directly on the effect canvas.
+async function computeSubjectCenter(maskBytes, targetW, targetH) {
+  const bmp = await createImageBitmap(new Blob([maskBytes]));
+  // Downscale for cheap iteration — 128 px on the long side is plenty for
+  // centroid + bounding-box estimation.
+  const scale = 128 / Math.max(bmp.width, bmp.height);
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const c = new OffscreenCanvas(w, h);
+  const cx = c.getContext("2d");
+  cx.drawImage(bmp, 0, 0, w, h);
+  const data = cx.getImageData(0, 0, w, h).data;
+  let sumX = 0, sumY = 0, sumW = 0;
+  let minX = w, maxX = 0, minY = h, maxY = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = data[(y * w + x) * 4 + 3];
+      if (a < 32) continue;
+      sumX += x * a; sumY += y * a; sumW += a;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (sumW === 0) return null;
+  const scaleX = targetW / w, scaleY = targetH / h;
+  const bboxW = (maxX - minX) * scaleX;
+  const bboxH = (maxY - minY) * scaleY;
+  return {
+    cx: (sumX / sumW) * scaleX,
+    cy: (sumY / sumW) * scaleY,
+    // Radius: covers ~65% of the subject's larger dimension, so the bright
+    // zone extends past shoulders but darkening starts before the frame edges.
+    radius: Math.max(bboxW, bboxH) * 0.65,
+  };
+}
 
 export async function applyEffects(bytes, effects, base = "", { output = "jpeg", mask = null } = {}) {
   if (!effects) return bytes;
@@ -540,9 +607,15 @@ export async function applyEffects(bytes, effects, base = "", { output = "jpeg",
     const subjectSnap = new OffscreenCanvas(bmp.width, bmp.height);
     subjectSnap.getContext("2d").drawImage(canvas, 0, 0);
 
+    // Spotlight needs the subject centroid; compute it lazily.
+    const center = overlayKeys.includes("spotlight")
+      ? await computeSubjectCenter(mask, bmp.width, bmp.height)
+      : null;
+
     for (const key of overlayKeys) {
       const fn = EFFECTS[key];
-      if (fn.length > 2) await fn(canvas, ctx, base);
+      if (key === "spotlight") fn(canvas, ctx, center);
+      else if (fn.length > 2) await fn(canvas, ctx, base);
       else fn(canvas, ctx);
     }
 
@@ -562,7 +635,8 @@ export async function applyEffects(bytes, effects, base = "", { output = "jpeg",
   } else {
     for (const key of overlayKeys) {
       const fn = EFFECTS[key];
-      if (fn.length > 2) await fn(canvas, ctx, base);
+      if (key === "spotlight") fn(canvas, ctx, null); // fallback to image center
+      else if (fn.length > 2) await fn(canvas, ctx, base);
       else fn(canvas, ctx);
     }
   }

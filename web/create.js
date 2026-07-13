@@ -444,6 +444,7 @@ async function buildForm() {
       { key: "brush", label: "Brush strokes" },
       { key: "spatter", label: "Ink spatter" },
       { key: "smoke", label: "Smoke" },
+      { key: "spotlight", label: "Spotlight" },
     ];
     const fxCard = card();
     const fxGrid = el("div", { className: "fx-grid" });
