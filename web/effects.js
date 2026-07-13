@@ -273,6 +273,207 @@ function lightLeak(canvas, ctx) {
   ctx.restore();
 }
 
+// ── Brush strokes ───────────────────────────────────────────────────────────
+// Bold sweeping calligraphic ink strokes. Each stroke is a wobbly bezier drawn
+// as a wide stack of stroked bristle paths, tapered at the ends, with a
+// trailing splatter cloud.
+function brushStrokes(canvas, ctx) {
+  const w = canvas.width, h = canvas.height;
+  const rng = mulberry32(19);
+  const strokes = 3;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.9;
+
+  for (let s = 0; s < strokes; s++) {
+    // Full-width sweeps — start off-canvas left, end off-canvas right
+    const y0 = h * (0.12 + s * 0.28 + (rng() - 0.5) * 0.1);
+    const y1 = h * (0.15 + s * 0.28 + (rng() - 0.5) * 0.2);
+    const cx1 = w * (0.15 + rng() * 0.2);
+    const cx2 = w * (0.6 + rng() * 0.2);
+    const cy1 = y0 + (rng() - 0.5) * h * 0.15;
+    const cy2 = y1 + (rng() - 0.5) * h * 0.15;
+    const thick = 55 + rng() * 35;
+    const bands = 14;
+    const steps = 140;
+
+    for (let band = 0; band < bands; band++) {
+      const bandT = band / (bands - 1);
+      const off = (bandT - 0.5) * thick;
+      // Central bristles opaque, edge bristles faint — feathers the edges
+      const bandFall = 1 - Math.pow(Math.abs(bandT - 0.5) * 2, 1.5);
+      ctx.strokeStyle = `rgba(255,255,255,${0.28 * bandFall + 0.05})`;
+      ctx.lineWidth = 2 + rng() * 1.5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      let inPath = false;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const mt = 1 - t;
+        const bx = 3 * mt * mt * t * cx1 + 3 * mt * t * t * cx2 + t * t * t * w;
+        const by = mt * mt * mt * y0 + 3 * mt * mt * t * cy1 + 3 * mt * t * t * cy2 + t * t * t * y1;
+        const dx = 3 * mt * mt * cx1 + 6 * mt * t * (cx2 - cx1) + 3 * t * t * (w - cx2);
+        const dy = 3 * mt * mt * (cy1 - y0) + 6 * mt * t * (cy2 - cy1) + 3 * t * t * (y1 - cy2);
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len, ny = dx / len;
+        const taper = Math.pow(Math.sin(t * Math.PI), 0.5);
+        const px = bx + nx * off * taper + (rng() - 0.5) * 2;
+        const py = by + ny * off * taper + (rng() - 0.5) * 2;
+        if (!inPath) { ctx.moveTo(px, py); inPath = true; }
+        else ctx.lineTo(px, py);
+        // Dry-brush breaks — more common on outer bristles
+        if (rng() > 0.96 - Math.abs(bandT - 0.5) * 0.1) {
+          ctx.stroke();
+          ctx.beginPath();
+          inPath = false;
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Trailing splatter cloud past the end of the stroke
+    for (let d = 0; d < 30; d++) {
+      const r = 1 + rng() * 5;
+      const dx = rng() * 120 - 20;
+      const dy = (rng() - 0.5) * 90;
+      ctx.fillStyle = `rgba(255,255,255,${0.2 + rng() * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(Math.min(w - 5, w - 40 + dx), y1 + dy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// ── Ink spatter ─────────────────────────────────────────────────────────────
+// Clustered ink dots + a few larger blobs, radiating from the two side edges.
+// Screen-blended so it lifts on dark backgrounds and stays subtle on light.
+function inkSpatter(canvas, ctx) {
+  const w = canvas.width, h = canvas.height;
+  const rng = mulberry32(31);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.95;
+
+  // Four cluster centers spread across the frame — corners + edges
+  const spread = Math.min(w, h) * 0.5;
+  const centers = [
+    { cx: w * 0.05, cy: h * (0.1 + rng() * 0.2), spread },
+    { cx: w * 0.95, cy: h * (0.15 + rng() * 0.25), spread },
+    { cx: w * 0.1, cy: h * (0.6 + rng() * 0.2), spread: spread * 0.8 },
+    { cx: w * 0.9, cy: h * (0.65 + rng() * 0.2), spread: spread * 0.8 },
+  ];
+
+  for (const { cx, cy, spread: sp } of centers) {
+    // Fine spatter (many tiny dots)
+    for (let i = 0; i < 380; i++) {
+      const angle = rng() * Math.PI * 2;
+      const dist = Math.pow(rng(), 1.6) * sp;
+      const x = cx + Math.cos(angle) * dist;
+      const y = cy + Math.sin(angle) * dist;
+      if (x < 0 || x >= w || y < 0 || y >= h) continue;
+      const r = 0.6 + rng() * 3;
+      const a = 0.35 + rng() * 0.5;
+      ctx.fillStyle = `rgba(255,255,255,${a})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Medium blobs
+    for (let i = 0; i < 24; i++) {
+      const angle = rng() * Math.PI * 2;
+      const dist = Math.pow(rng(), 1.3) * sp * 0.65;
+      const x = cx + Math.cos(angle) * dist;
+      const y = cy + Math.sin(angle) * dist;
+      if (x < 0 || x >= w || y < 0 || y >= h) continue;
+      ctx.fillStyle = `rgba(255,255,255,${0.5 + rng() * 0.3})`;
+      ctx.beginPath();
+      const pts = 10;
+      const rBase = 5 + rng() * 12;
+      for (let p = 0; p <= pts; p++) {
+        const a = (p / pts) * Math.PI * 2;
+        const rr = rBase * (0.55 + rng() * 0.7);
+        const px = x + Math.cos(a) * rr;
+        const py = y + Math.sin(a) * rr;
+        if (p === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    // A few big splat blobs
+    for (let i = 0; i < 3; i++) {
+      const angle = rng() * Math.PI * 2;
+      const dist = rng() * sp * 0.35;
+      const x = cx + Math.cos(angle) * dist;
+      const y = cy + Math.sin(angle) * dist;
+      if (x < 0 || x >= w || y < 0 || y >= h) continue;
+      ctx.fillStyle = `rgba(255,255,255,${0.55 + rng() * 0.25})`;
+      ctx.beginPath();
+      const pts = 14;
+      const rBase = 18 + rng() * 22;
+      for (let p = 0; p <= pts; p++) {
+        const a = (p / pts) * Math.PI * 2;
+        const rr = rBase * (0.5 + rng() * 0.9);
+        const px = x + Math.cos(a) * rr;
+        const py = y + Math.sin(a) * rr;
+        if (p === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// ── Smoke plumes ────────────────────────────────────────────────────────────
+// Soft wispy plumes rising from the bottom, built out of stacked semi-transparent
+// radial gradients with vertical stretch. Reads as atmospheric haze.
+function smokePlumes(canvas, ctx) {
+  const w = canvas.width, h = canvas.height;
+  const rng = mulberry32(53);
+
+  const temp = new OffscreenCanvas(w, h);
+  const tctx = temp.getContext("2d");
+
+  const plumes = 5;
+  for (let p = 0; p < plumes; p++) {
+    const cx = w * (0.12 + p * (0.76 / (plumes - 1)) + (rng() - 0.5) * 0.06);
+    const baseY = h * (0.95 + rng() * 0.05);
+    const puffs = 26;
+    for (let i = 0; i < puffs; i++) {
+      const t = i / (puffs - 1);
+      const y = baseY - t * h * 0.85 * (0.7 + rng() * 0.4);
+      const drift = Math.sin(t * Math.PI * 1.6 + p * 1.3) * w * 0.09;
+      const x = cx + drift + (rng() - 0.5) * w * 0.04;
+      // Puffs grow substantially as they rise, and each puff is much bigger
+      const radius = 90 + t * 180 + rng() * 60;
+      const alpha = (1 - t * 0.5) * (0.30 + rng() * 0.12);
+      const grad = tctx.createRadialGradient(x, y, 0, x, y, radius);
+      grad.addColorStop(0, `rgba(245,245,250,${alpha})`);
+      grad.addColorStop(0.5, `rgba(225,225,235,${alpha * 0.55})`);
+      grad.addColorStop(1, "rgba(220,220,230,0)");
+      tctx.fillStyle = grad;
+      tctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    }
+  }
+
+  // Bottom base haze — grounds the plumes so they don't look like floating
+  // blobs. Semi-opaque band that dissipates upward.
+  const baseGrad = tctx.createLinearGradient(0, h, 0, h * 0.6);
+  baseGrad.addColorStop(0, "rgba(235,235,240,0.35)");
+  baseGrad.addColorStop(1, "rgba(235,235,240,0)");
+  tctx.fillStyle = baseGrad;
+  tctx.fillRect(0, h * 0.6, w, h * 0.4);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 1.0;
+  ctx.drawImage(temp, 0, 0);
+  ctx.restore();
+}
+
 // ── Geometric triangles ─────────────────────────────────────────────────────
 // Subtle triangle grid overlay at low opacity.
 function geometricTriangles(canvas, ctx) {
@@ -309,9 +510,12 @@ const EFFECTS = {
   topographic: topographicLines,
   lightLeak,
   triangles: geometricTriangles,
+  brush: brushStrokes,
+  spatter: inkSpatter,
+  smoke: smokePlumes,
 };
 
-export async function applyEffects(bytes, effects, base = "") {
+export async function applyEffects(bytes, effects, base = "", { output = "jpeg", mask = null } = {}) {
   if (!effects) return bytes;
   const keys = Object.keys(effects).filter((k) => effects[k] && EFFECTS[k]);
   if (!keys.length) return bytes;
@@ -321,12 +525,50 @@ export async function applyEffects(bytes, effects, base = "") {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(bmp, 0, 0);
 
-  for (const key of keys) {
-    const fn = EFFECTS[key];
-    if (fn.length > 2) await fn(canvas, ctx, base);
-    else fn(canvas, ctx);
+  // Split into clarity (applies to whole image) and overlays (masked to
+  // background when a subject mask is provided). Clarity is a per-pixel
+  // sharpen/contrast bump that reads correctly on skin/jersey; overlays are
+  // decorative and should sit behind the subject.
+  const clarityKeys = keys.filter((k) => k === "clarity");
+  const overlayKeys = keys.filter((k) => k !== "clarity");
+
+  for (const key of clarityKeys) EFFECTS[key](canvas, ctx);
+
+  if (mask && overlayKeys.length) {
+    // Snapshot the clarity-only pixels — this is what should show through in
+    // the subject area after overlays are applied and composited back.
+    const subjectSnap = new OffscreenCanvas(bmp.width, bmp.height);
+    subjectSnap.getContext("2d").drawImage(canvas, 0, 0);
+
+    for (const key of overlayKeys) {
+      const fn = EFFECTS[key];
+      if (fn.length > 2) await fn(canvas, ctx, base);
+      else fn(canvas, ctx);
+    }
+
+    // Compose the subject snapshot back on top, alpha-masked. Result: overlays
+    // exist only where mask is 0 (background); the subject shows its
+    // clarity-only pixels untouched. Any mask imperfection reveals original
+    // subject pixels — indistinguishable from the surrounding subject.
+    const maskBmp = await createImageBitmap(new Blob([mask]));
+    const cutoutCanvas = new OffscreenCanvas(bmp.width, bmp.height);
+    const cctx = cutoutCanvas.getContext("2d");
+    cctx.drawImage(subjectSnap, 0, 0);
+    cctx.globalCompositeOperation = "destination-in";
+    cctx.imageSmoothingEnabled = true;
+    cctx.imageSmoothingQuality = "high";
+    cctx.drawImage(maskBmp, 0, 0, bmp.width, bmp.height);
+    ctx.drawImage(cutoutCanvas, 0, 0);
+  } else {
+    for (const key of overlayKeys) {
+      const fn = EFFECTS[key];
+      if (fn.length > 2) await fn(canvas, ctx, base);
+      else fn(canvas, ctx);
+    }
   }
 
-  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
+  const blob = await canvas.convertToBlob(
+    output === "png" ? { type: "image/png" } : { type: "image/jpeg", quality: 0.92 }
+  );
   return new Uint8Array(await blob.arrayBuffer());
 }

@@ -359,6 +359,12 @@ async function buildForm() {
         f.append(frameControl(slotKey));
         slotsHost.append(f);
       }
+      // Subject cut only makes sense on single-photo modes (one hero subject).
+      // Split/double/triple modes have multiple photo halves — the toggle is
+      // hidden there.
+      if (controls.subjectCutWrap) {
+        controls.subjectCutWrap.classList.toggle("hidden", controls.mode !== "single");
+      }
     };
     if (modes.length > 1) {
       imgCard.append(field("Background",
@@ -366,6 +372,21 @@ async function buildForm() {
     }
     renderSlots();
     imgCard.append(slotsHost);
+
+    // Subject cut toggle — placed with the image controls since that's what it
+    // affects. Defaults to on for single mode; hidden for split/double/triple.
+    const scId = `sc-${Math.random().toString(36).slice(2)}`;
+    const scCb = el("input", { type: "checkbox", id: scId, checked: true });
+    const scLbl = el("label", { className: "fx-toggle", htmlFor: scId, textContent: " Subject cut (effects sit behind the person)" });
+    scLbl.prepend(scCb);
+    const scHint = el("p", { className: "hint", textContent: "Isolates the person so overlay effects (edge glow, triangles, halftone…) render behind them. First render downloads a ~9 MB model." });
+    const scWrap = el("div");
+    scWrap.append(scLbl, scHint);
+    controls.subjectCut = scCb;
+    controls.subjectCutWrap = scWrap;
+    imgCard.append(scWrap);
+    if (controls.mode !== "single") scWrap.classList.add("hidden");
+
     form.append(imgCard);
   }
 
@@ -420,6 +441,9 @@ async function buildForm() {
       { key: "topographic", label: "Topo lines" },
       { key: "lightLeak", label: "Light leak" },
       { key: "triangles", label: "Triangles" },
+      { key: "brush", label: "Brush strokes" },
+      { key: "spatter", label: "Ink spatter" },
+      { key: "smoke", label: "Smoke" },
     ];
     const fxCard = card();
     const fxGrid = el("div", { className: "fx-grid" });
@@ -517,6 +541,11 @@ function buildRequest() {
     if (cb.checked) effects[key] = true;
   }
   if (Object.keys(effects).length) req.effects = effects;
+
+  // Subject cut is only relevant to single-photo modes; unchecked → skip cut.
+  if (controls.subjectCut && controls.mode === "single" && !controls.subjectCut.checked) {
+    req.subjectCut = false;
+  }
 
   return req;
 }
