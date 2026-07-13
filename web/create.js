@@ -247,11 +247,9 @@ function imagePicker() {
   toggle.addEventListener("click", () => panel.classList.toggle("hidden"));
   prev.addEventListener("click", () => { if (page > 0) { page--; renderPage(); } });
   next.addEventListener("click", () => { if ((page + 1) * PAGE_SIZE < results.length) { page++; renderPage(); } });
-  // hq re-filters live (same result count, just a filter tweak). count is NOT
-  // live — it's applied on the next Go, so picking a bigger result set never
-  // fires a search on its own.
-  hq.addEventListener("change", () => { if (q.value.trim()) search(); });
-
+  // Search fires ONLY on the Go button. Changing the query, result count, or
+  // the HQ toggle updates state but does not trigger a fetch — that avoids
+  // burning credits on every keystroke or option flip.
   const search = async () => {
     const term = q.value.trim();
     if (!term) return;
@@ -277,7 +275,9 @@ function imagePicker() {
     }
   };
   go.addEventListener("click", search);
-  q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
+  // Prevent implicit form submit on Enter, but do NOT trigger a search —
+  // per user requirement, Go is the only trigger.
+  q.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
 
   wrap.append(file, toggle, panel, chosen);
   return { node: wrap, getValue: () => value };
