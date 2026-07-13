@@ -200,14 +200,43 @@ async function applyImages(request, manifest, offsets, client, env, log) {
       clip = true;
     }
 
-    await client.placeImage(await env.loadImage(ref, { maxSize: 2000, effects: request.effects }), {
-      name: `IMG_${slotKey}`,
+    const imgName = `IMG_${slotKey}`;
+    const placeOpts = {
+      name: imgName,
       frame: [...slot.frame, off[0], off[1]],
       above: target,
       clip,
       zoom: zooms[slotKey] || 1,
-    });
-    log(`image slot '${slotKey}' placed`);
+    };
+
+    // Subject-aware effects: for "single" modes only (not split/double/triple),
+    // isolate the person and apply overlay effects only to the background,
+    // keeping clarity on the whole image. Single-layer approach — no cutout
+    // sandwich, no alignment/ghost issues. Skip when no overlay effect is
+    // active (the ML work would be invisible).
+    const overlayActive = request.effects &&
+      Object.keys(request.effects).some((k) => k !== "clarity" && request.effects[k]);
+    const useSubjectCut =
+      request.subjectCut !== false && request.mode === "single" && env.subjectMask && overlayActive;
+
+    let placedBytes;
+    if (useSubjectCut) {
+      const raw = await env.loadImage(ref, { maxSize: 2000 });
+      let mask = null;
+      try {
+        mask = await env.subjectMask(raw);
+      } catch (err) {
+        // Model init/inference can fail on older devices — degrade to a
+        // uniform-effects render rather than throw away the card.
+        log(`subject mask failed (${err.message}); flat effects`);
+      }
+      placedBytes = await env.applyEffects(raw, request.effects, { mask });
+      log(`image slot '${slotKey}' placed${mask ? " (subject-protected)" : ""}`);
+    } else {
+      placedBytes = await env.loadImage(ref, { maxSize: 2000, effects: request.effects });
+      log(`image slot '${slotKey}' placed`);
+    }
+    await client.placeImage(placedBytes, placeOpts);
   }
 }
 

@@ -32,6 +32,84 @@ const session = new RenderSession({ base: BASE });
 // in the renderer so the form and the render request stay in sync.
 const layoutBlocks = (m) => m.layout?.blocks || (m.layout?.block ? [m.layout.block] : []);
 
+// Per-effect tuneable params. Defaults MUST match the fallback constants
+// baked into each effect fn in `web/effects.js` — a knob at its default value
+// is dropped from the request so `effects: true` still works.
+//   type: undefined = range; "color" = #hex picker; "select" = enum dropdown
+//   min/max/step apply to ranges only. `suffix` (e.g. "°", "%") is display-only.
+function buildFxDefs() {
+  const R = (label, key, min, max, def, opts = {}) =>
+    ({ key, label, min, max, default: def, step: opts.step, suffix: opts.suffix, full: opts.full });
+  const C = (label, key, def, opts = {}) =>
+    ({ key, label, type: "color", default: def, full: opts.full });
+  const S = (label, key, options, def) =>
+    ({ key, label, type: "select", options, default: def });
+  return [
+    { key: "clarity", label: "Clarity boost", params: [
+      R("Intensity", "intensity", 0, 100, 50, { suffix: "%" }),
+      R("Radius",    "radius",    5, 60, 20, { suffix: "px" }),
+    ]},
+    { key: "edgeGlow", label: "Edge glow", params: [
+      R("Intensity", "intensity", 0, 100, 35, { suffix: "%" }),
+      R("Width",     "width",     10, 100, 45, { suffix: "%" }),
+      S("Side",      "side",      ["right", "left", "top", "bottom"], "right"),
+      C("Color",     "color",     "#ff8c28"),
+    ]},
+    { key: "halftone", label: "Halftone light", params: [
+      R("Intensity", "intensity", 0, 100, 15, { suffix: "%" }),
+      R("Spacing",   "spacing",   6, 40, 14, { suffix: "px" }),
+      C("Color",     "color",     "#ffffff", { full: true }),
+    ]},
+    { key: "grit", label: "Grit", params: [
+      R("Intensity", "intensity", 0, 100, 50, { suffix: "%" }),
+      R("Vignette",  "vignette",  0, 100, 25, { suffix: "%" }),
+    ]},
+    { key: "condensation", label: "Condensation", params: [
+      R("Intensity", "intensity", 0, 100, 18, { suffix: "%" }),
+      R("Blur",      "blur",      0, 8, 2, { step: 0.5, suffix: "px" }),
+    ]},
+    { key: "topographic", label: "Topo lines", params: [
+      R("Intensity", "intensity", 0, 100, 14, { suffix: "%" }),
+      R("Line count","count",     5, 40, 18),
+      C("Color",     "color",     "#ffffff", { full: true }),
+    ]},
+    { key: "lightLeak", label: "Light leak", params: [
+      R("Intensity", "intensity", 0, 100, 32, { suffix: "%" }),
+      R("Angle",     "angle",     0, 360, 45, { suffix: "°" }),
+      C("Color 1",   "color1",    "#ffa03c"),
+      C("Color 2",   "color2",    "#ff64b4"),
+    ]},
+    { key: "triangles", label: "Triangles", params: [
+      R("Intensity", "intensity", 0, 100, 12, { suffix: "%" }),
+      R("Size",      "size",      30, 200, 80, { suffix: "px" }),
+      C("Color",     "color",     "#ffffff", { full: true }),
+    ]},
+    { key: "brush", label: "Brush strokes", params: [
+      R("Intensity", "intensity", 0, 100, 90, { suffix: "%" }),
+      R("Strokes",   "count",     1, 6, 3),
+      R("Angle",     "angle",     -45, 45, 0, { suffix: "°" }),
+      C("Color",     "color",     "#ffffff"),
+    ]},
+    { key: "spatter", label: "Ink spatter", params: [
+      R("Intensity", "intensity", 0, 100, 95, { suffix: "%" }),
+      R("Density",   "density",   20, 200, 100, { suffix: "%" }),
+      C("Color",     "color",     "#ffffff", { full: true }),
+    ]},
+    { key: "smoke", label: "Smoke", params: [
+      R("Intensity", "intensity", 0, 100, 100, { suffix: "%" }),
+      R("Angle",     "angle",     -45, 45, 0, { suffix: "°" }),
+      C("Color",     "color",     "#f5f5fa", { full: true }),
+    ]},
+    { key: "spotlight", label: "Spotlight", params: [
+      R("Darkness",  "darkness",  0, 100, 75, { suffix: "%" }),
+      R("Halo size", "scale",     30, 200, 100, { suffix: "%" }),
+      R("Nudge X",   "dx",        -50, 50, 0, { suffix: "%" }),
+      R("Nudge Y",   "dy",        -50, 50, 0, { suffix: "%" }),
+      C("Light tint","tint",      "#ffffff", { full: true }),
+    ]},
+  ];
+}
+
 // Per-render UI state, rebuilt on template change.
 let manifest = null;
 let controls = {};        // { texts:{key:el}, fontSizes:{field:el}, rows, rowsBlock, mode, images:{slot}, circle, tweet, emoji }
@@ -169,11 +247,9 @@ function imagePicker() {
   toggle.addEventListener("click", () => panel.classList.toggle("hidden"));
   prev.addEventListener("click", () => { if (page > 0) { page--; renderPage(); } });
   next.addEventListener("click", () => { if ((page + 1) * PAGE_SIZE < results.length) { page++; renderPage(); } });
-  // hq re-filters live (same result count, just a filter tweak). count is NOT
-  // live — it's applied on the next Go, so picking a bigger result set never
-  // fires a search on its own.
-  hq.addEventListener("change", () => { if (q.value.trim()) search(); });
-
+  // Search fires ONLY on the Go button. Changing the query, result count, or
+  // the HQ toggle updates state but does not trigger a fetch — that avoids
+  // burning credits on every keystroke or option flip.
   const search = async () => {
     const term = q.value.trim();
     if (!term) return;
@@ -199,7 +275,9 @@ function imagePicker() {
     }
   };
   go.addEventListener("click", search);
-  q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
+  // Prevent implicit form submit on Enter, but do NOT trigger a search —
+  // per user requirement, Go is the only trigger.
+  q.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
 
   wrap.append(file, toggle, panel, chosen);
   return { node: wrap, getValue: () => value };
@@ -359,6 +437,12 @@ async function buildForm() {
         f.append(frameControl(slotKey));
         slotsHost.append(f);
       }
+      // Subject cut only makes sense on single-photo modes (one hero subject).
+      // Split/double/triple modes have multiple photo halves — the toggle is
+      // hidden there.
+      if (controls.subjectCutWrap) {
+        controls.subjectCutWrap.classList.toggle("hidden", controls.mode !== "single");
+      }
     };
     if (modes.length > 1) {
       imgCard.append(field("Background",
@@ -366,6 +450,21 @@ async function buildForm() {
     }
     renderSlots();
     imgCard.append(slotsHost);
+
+    // Subject cut toggle — placed with the image controls since that's what it
+    // affects. Defaults to on for single mode; hidden for split/double/triple.
+    const scId = `sc-${Math.random().toString(36).slice(2)}`;
+    const scCb = el("input", { type: "checkbox", id: scId, checked: true });
+    const scLbl = el("label", { className: "fx-toggle", htmlFor: scId, textContent: " Subject cut (effects sit behind the person)" });
+    scLbl.prepend(scCb);
+    const scHint = el("p", { className: "hint", textContent: "Isolates the person so overlay effects (edge glow, triangles, halftone…) render behind them. First render downloads a ~9 MB model." });
+    const scWrap = el("div");
+    scWrap.append(scLbl, scHint);
+    controls.subjectCut = scCb;
+    controls.subjectCutWrap = scWrap;
+    imgCard.append(scWrap);
+    if (controls.mode !== "single") scWrap.classList.add("hidden");
+
     form.append(imgCard);
   }
 
@@ -409,29 +508,102 @@ async function buildForm() {
   }
   if (hasExtras) form.append(extras);
 
-  // Photo effects toggles — applied to base images before placement.
+  // Photo effects — collapsible section with per-effect config accordion.
+  // Each row: checkbox + label. Clicking the row (not the checkbox) opens a
+  // per-effect config panel with tuneable knobs (intensity, colors, position).
+  // Request shape: unchecked → omitted; checked with all defaults → `true`;
+  // any knob changed → { param: value, ... } object.
   if (manifest.imageModes) {
-    const FX = [
-      { key: "clarity", label: "Clarity boost" },
-      { key: "edgeGlow", label: "Edge glow" },
-      { key: "halftone", label: "Halftone light" },
-      { key: "grit", label: "Grit light" },
-      { key: "condensation", label: "Condensation" },
-      { key: "topographic", label: "Topo lines" },
-      { key: "lightLeak", label: "Light leak" },
-      { key: "triangles", label: "Triangles" },
-    ];
+    const FX_DEFS = buildFxDefs();
     const fxCard = card();
-    const fxGrid = el("div", { className: "fx-grid" });
-    for (const fx of FX) {
-      const id = `fx-${fx.key}`;
-      const cb = el("input", { type: "checkbox", id });
-      const lbl = el("label", { className: "fx-toggle", htmlFor: id });
-      lbl.append(cb, document.createTextNode(fx.label));
-      controls.effects[fx.key] = cb;
-      fxGrid.append(lbl);
+    fxCard.classList.add("fx-card");
+
+    const header = el("div", { className: "fx-header" });
+    const chev = el("span", { className: "fx-chev", textContent: "▶" });
+    header.append(el("label", { textContent: "Photo effects" }), chev);
+    header.addEventListener("click", () => fxCard.classList.toggle("fx-open"));
+
+    const body = el("div", { className: "fx-body" });
+    const list = el("div", { className: "fx-list" });
+
+    for (const fx of FX_DEFS) {
+      const row = el("div", { className: "fx-row" });
+      const rowHead = el("div", { className: "fx-row-head" });
+      const cbId = `fx-${fx.key}`;
+      const cb = el("input", { type: "checkbox", id: cbId });
+      // Stop label-click from bubbling to the row (which would collapse it).
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      const name = el("span", { className: "fx-name", textContent: fx.label });
+      const rowChev = el("span", { className: "fx-chev", textContent: "▶" });
+      rowHead.append(cb, name, rowChev);
+      rowHead.addEventListener("click", (e) => {
+        if (e.target === cb) return;
+        row.classList.toggle("fx-open");
+      });
+
+      const rowBody = el("div", { className: "fx-row-body" });
+      const params = el("div", { className: "fx-params" });
+      const state = {}; // param key → current value
+      const defaults = {};
+      const setters = {}; // param key → (value) → sync UI + state
+
+      for (const p of fx.params) {
+        defaults[p.key] = p.default;
+        state[p.key] = p.default;
+        const wrap = el("div", { className: "fx-param" + (p.full ? " fx-full" : "") });
+        const lbl = el("label");
+        const nameSpan = el("span", { textContent: p.label });
+        const valSpan = el("span", { className: "fx-val" });
+        lbl.append(nameSpan, valSpan);
+        wrap.append(lbl);
+
+        let input;
+        if (p.type === "color") {
+          input = el("input", { type: "color", value: p.default });
+          input.addEventListener("input", () => { state[p.key] = input.value; valSpan.textContent = input.value; });
+          valSpan.textContent = p.default;
+          setters[p.key] = (v) => { input.value = v; state[p.key] = v; valSpan.textContent = v; };
+        } else if (p.type === "select") {
+          input = el("select");
+          for (const opt of p.options) input.append(el("option", { value: opt, textContent: opt }));
+          input.value = p.default;
+          input.addEventListener("input", () => { state[p.key] = input.value; valSpan.textContent = input.value; });
+          valSpan.textContent = p.default;
+          setters[p.key] = (v) => { input.value = v; state[p.key] = v; valSpan.textContent = v; };
+        } else {
+          input = el("input", {
+            type: "range",
+            min: p.min, max: p.max, step: p.step || 1, value: p.default,
+          });
+          input.addEventListener("input", () => {
+            const n = Number(input.value);
+            state[p.key] = n;
+            valSpan.textContent = p.suffix ? `${n}${p.suffix}` : n;
+          });
+          valSpan.textContent = p.suffix ? `${p.default}${p.suffix}` : p.default;
+          setters[p.key] = (v) => {
+            input.value = v; state[p.key] = v;
+            valSpan.textContent = p.suffix ? `${v}${p.suffix}` : v;
+          };
+        }
+        wrap.append(input);
+        params.append(wrap);
+      }
+
+      const reset = el("button", { type: "button", className: "fx-reset", textContent: "Reset to defaults" });
+      reset.addEventListener("click", () => {
+        for (const [k, v] of Object.entries(defaults)) setters[k](v);
+      });
+
+      rowBody.append(params, reset);
+      row.append(rowHead, rowBody);
+      list.append(row);
+
+      controls.effects[fx.key] = { enabled: cb, state, defaults };
     }
-    fxCard.append(el("label", { textContent: "Photo effects" }), fxGrid);
+
+    body.append(list);
+    fxCard.append(header, body);
     form.append(fxCard);
   }
 
@@ -512,11 +684,23 @@ function buildRequest() {
   if (Object.keys(offsets).length) req.offsets = offsets;
   if (Object.keys(zoom).length) req.zoom = zoom;
 
+  // Effects: unchecked → omitted; checked with unchanged knobs → `true`;
+  // any knob differs from its default → { paramKey: value, ... } overrides.
   const effects = {};
-  for (const [key, cb] of Object.entries(controls.effects || {})) {
-    if (cb.checked) effects[key] = true;
+  for (const [key, ctrl] of Object.entries(controls.effects || {})) {
+    if (!ctrl.enabled.checked) continue;
+    const overrides = {};
+    for (const [pk, v] of Object.entries(ctrl.state)) {
+      if (v !== ctrl.defaults[pk]) overrides[pk] = v;
+    }
+    effects[key] = Object.keys(overrides).length ? overrides : true;
   }
   if (Object.keys(effects).length) req.effects = effects;
+
+  // Subject cut is only relevant to single-photo modes; unchecked → skip cut.
+  if (controls.subjectCut && controls.mode === "single" && !controls.subjectCut.checked) {
+    req.subjectCut = false;
+  }
 
   return req;
 }

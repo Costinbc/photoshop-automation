@@ -5,6 +5,7 @@
 
 import { keyBlackCanvas } from "./keyblack-web.js";
 import { applyEffects } from "./effects.js";
+import { subjectMask } from "./subject-cut.js";
 
 // Downscale a picked image so it's no larger than `maxSize` on its longest side
 // before it goes to Photopea. Phone photos are many MB / 12MP; pasting those
@@ -91,6 +92,21 @@ export function createWebEnv({ base = "" } = {}) {
 
     keyBlack(bytes, opts = {}) {
       return keyBlackCanvas(bytes, opts);
+    },
+
+    // Effect pipeline exposed on the env so the renderer can apply effects to
+    // an already-loaded byte buffer, optionally passing a subject mask so
+    // overlay effects (edge glow, triangles, etc.) skip the subject area.
+    applyEffects(bytes, effects, opts = {}) {
+      return applyEffects(bytes, effects, base, opts);
+    },
+
+    // Client-side subject detection — returns PNG bytes of a small alpha mask
+    // (255 over the person, 0 over background). `applyEffects` upsamples and
+    // uses this to protect the subject region from overlay effects on a single
+    // layer, so there's no cutout compositing and no ghost/alignment issue.
+    subjectMask(bytes) {
+      return subjectMask(bytes);
     },
   };
 }
