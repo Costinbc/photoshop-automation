@@ -20,7 +20,11 @@
         "font": "impact.ttf",
         "fontSizeDefault": 130,
         "leadingRatio": 1.0,
-        "bottomY": 572
+        "groupBottomY": 657,
+        "below": [
+          { "layer": "separating rectangle top right", "gap": 31 },
+          { "layer": "CAPTION TOP RIGHT", "gap": 58 }
+        ]
       },
       {
         "text": "QUOTE bottom left",
@@ -28,7 +32,11 @@
         "font": "impact.ttf",
         "fontSizeDefault": 100,
         "leadingRatio": 1.0,
-        "bottomY": 1236
+        "groupBottomY": 1335,
+        "below": [
+          { "layer": "separating rectangle bottom left", "gap": 42 },
+          { "layer": "CAPTION bottom eft", "gap": 72 }
+        ]
       }
     ]
   },

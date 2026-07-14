@@ -355,10 +355,42 @@ function frameControl(key) {
   return wrap;
 }
 
+// Per-block vertical nudge: shift a whole quote+caption band up or down.
+// Default position is set by the manifest (bottom of each band); this lets the
+// user move the group to make everything fit without editing the template.
+function blockNudge(field) {
+  controls.blockOffsets[field] = [0, 0];
+  const NUDGE = 20; // px per tap — text bands are finer than image slots
+
+  const nY = el("input", { type: "number", className: "nudge-input", value: "0", title: "Vertical offset (px)" });
+  const update = () => { nY.value = controls.blockOffsets[field][1]; };
+  const bump = (dy) => { controls.blockOffsets[field][1] += dy * NUDGE; update(); };
+  nY.addEventListener("change", () => { controls.blockOffsets[field][1] = parseInt(nY.value, 10) || 0; });
+
+  const triBtn = (triClass, title, onClick) => {
+    const b = el("button", { type: "button", className: "nudge-btn", title });
+    b.append(el("span", { className: `tri ${triClass}` }));
+    b.addEventListener("click", onClick);
+    return b;
+  };
+  const wrap = el("div", { className: "nudge" });
+  wrap.append(
+    el("span", { className: "nudge-label", textContent: "Move" }),
+    triBtn("tri-up", "Up", () => bump(-1)),
+    triBtn("tri-down", "Down", () => bump(1)),
+    nY,
+    el("button", {
+      type: "button", className: "nudge-btn", textContent: "Reset", title: "Back to default position",
+      onclick: () => { controls.blockOffsets[field] = [0, 0]; update(); },
+    }),
+  );
+  return wrap;
+}
+
 async function buildForm() {
   const form = $("form");
   form.replaceChildren();
-  controls = { texts: {}, fontSizes: {}, verticalScales: {}, images: {}, offsets: {}, zoom: {}, effects: {} };
+  controls = { texts: {}, fontSizes: {}, verticalScales: {}, blockOffsets: {}, images: {}, offsets: {}, zoom: {}, effects: {} };
   measurer = null; measurerSize = null;
 
   const blocks = layoutBlocks(manifest);
@@ -416,6 +448,12 @@ async function buildForm() {
         vsRange.addEventListener("input", () => { vsOut.textContent = vsRange.value; });
         const vsLabel = blocks.length > 1 ? `${humanize(key)} height` : "Text height";
         textCard.append(field(vsLabel, vsRow));
+
+        // Nudge the whole quote+caption band up or down — the manifest picks a
+        // default anchor (bottom of the band for multi-band templates); this
+        // lets the user reposition to make everything fit.
+        const nudgeLabel = blocks.length > 1 ? `${humanize(key)} position` : "Text position";
+        textCard.append(field(nudgeLabel, blockNudge(key)));
       }
     }
     form.append(textCard);
@@ -650,6 +688,11 @@ function buildRequest() {
     if (vs && vs !== 100) verticalScales[key] = vs;
   }
   if (Object.keys(verticalScales).length) req.verticalScales = verticalScales;
+  const blockOffsets = {};
+  for (const [field, off] of Object.entries(controls.blockOffsets || {})) {
+    if (off && (off[0] || off[1])) blockOffsets[field] = off;
+  }
+  if (Object.keys(blockOffsets).length) req.blockOffsets = blockOffsets;
   if (controls.mode) {
     req.mode = controls.mode;
     req.images = {};
