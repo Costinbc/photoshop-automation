@@ -22,7 +22,7 @@
         "font": "impact.ttf",
         "fontSizeDefault": 80,
         "leadingRatio": 1.0,
-        "bottomY": 300,
+        "groupBottomY": 435,
         "below": [
           { "layer": "sep_1", "gap": 32 },
           { "layer": "cap_1", "gap": 58 }
@@ -34,7 +34,7 @@
         "font": "impact.ttf",
         "fontSizeDefault": 80,
         "leadingRatio": 1.0,
-        "bottomY": 750,
+        "groupBottomY": 885,
         "below": [
           { "layer": "sep_2", "gap": 32 },
           { "layer": "cap_2", "gap": 58 }
@@ -46,7 +46,7 @@
         "font": "impact.ttf",
         "fontSizeDefault": 80,
         "leadingRatio": 1.0,
-        "bottomY": 1200,
+        "groupBottomY": 1335,
         "below": [
           { "layer": "sep_3", "gap": 32 },
           { "layer": "cap_3", "gap": 58 }

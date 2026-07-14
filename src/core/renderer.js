@@ -109,8 +109,14 @@ export async function render(request, { client, env, log = noop, installedFonts 
     // Non-block text fields (captions and other secondary text) can also carry
     // a per-field font size from `fontSizes[key]`. Block sizes are applied in
     // reflow() alongside leading/anchoring, so skip them here.
+    // Also fix leading: auto-leading collapses multi-line caps to a punishing
+    // ~0.9× stack, so any caption that wraps reads glued together. Force a
+    // sane ratio (manifest override via captionLeadingRatio, else 1.15).
     if (!fieldBlock && request.fontSizes && request.fontSizes[key] != null) {
-      await client.setFontSize(layer, request.fontSizes[key]);
+      const capSize = request.fontSizes[key];
+      const capLeadRatio = manifest.captionLeadingRatio || 1.15;
+      await client.setFontSize(layer, capSize);
+      await client.setLeading(layer, Math.round(capSize * capLeadRatio));
     }
     log(`text '${key}' set`);
   }
@@ -142,6 +148,8 @@ async function reflow(request, manifest, client, log) {
   const blocks = getBlocks(manifest);
   if (!blocks.length) return;
 
+  const blockOffsets = request.blockOffsets || {};
+
   for (const L of blocks) {
     const size = sizeFor(request, L);
     if (size) await client.setFontSize(L.text, size);
@@ -169,6 +177,36 @@ async function reflow(request, manifest, client, log) {
     for (const d of L.below || []) {
       const b = await client.bounds(d.layer);
       await client.translateLayer(d.layer, 0, tb.b + d.gap - b.t); // top -> gap below text bottom
+    }
+
+    // Group bottom-anchor: shift the whole reflowed unit (block + above/below)
+    // so the LOWEST bottom in the group sits at `groupBottomY`. Solves the
+    // "text ends mid-band, empty space below the caption" problem in multi-band
+    // templates: manifest declares the band's floor, reflow snaps to it after
+    // the dependent captions have been placed.
+    if (L.groupBottomY != null) {
+      let maxBottom = (await client.bounds(L.text)).b;
+      for (const d of L.below || []) {
+        const b = await client.bounds(d.layer);
+        if (b.b > maxBottom) maxBottom = b.b;
+      }
+      const dy = L.groupBottomY - maxBottom;
+      if (dy) {
+        await client.translateLayer(L.text, 0, dy);
+        for (const a of L.above || []) await client.translateLayer(a.layer, 0, dy);
+        for (const d of L.below || []) await client.translateLayer(d.layer, 0, dy);
+      }
+    }
+
+    // Per-block nudge from the UI: `blockOffsets[field] = [dx, dy]` shifts the
+    // whole group (text + above + below) as one, so users can slide a band up
+    // or down to make things fit without editing the manifest.
+    const off = blockOffsets[L.field];
+    if (off && (off[0] || off[1])) {
+      const [dx, dy] = off;
+      await client.translateLayer(L.text, dx, dy);
+      for (const a of L.above || []) await client.translateLayer(a.layer, dx, dy);
+      for (const d of L.below || []) await client.translateLayer(d.layer, dx, dy);
     }
   }
   log("layout reflowed to text height");
