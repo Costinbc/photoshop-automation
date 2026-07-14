@@ -225,11 +225,16 @@ export class PhotopeaClient {
       );
     } else {
       // cover: fill the frame (crop overflow), centered, then nudged by the
-      // offset. Scale up by 2*|offset| per axis so the shifted image still fully
-      // covers the frame (no exposed edge), then by `zoom` (1 = plain cover,
-      // >1 crops in, <1 reveals more). Zero offset + zoom 1 -> plain cover.
+      // offset. Scale is `zoom` * plain cover (1 = plain cover, >1 crops in,
+      // <1 reveals more). The offset only translates — it does NOT feed back
+      // into the scale. Older code added `2*|offset|` to the numerator so a
+      // shifted image still fully covered the frame, but slots are clip-masked
+      // (target+clip or synthClip), so any overshoot is invisibly clipped and
+      // that "safety" only had one visible effect: every tap on a move arrow
+      // silently zoomed the image in, especially after the user had already
+      // zoomed. Decoupled now — arrows move, +/- zoom, and the two don't cross.
       await this.runScript(
-        `var s = Math.max((${fw}+2*Math.abs(${offX}))/window._iw, (${fh}+2*Math.abs(${offY}))/window._ih) * ${zoom} * 100; window._ph.resize(s, s, AnchorPosition.MIDDLECENTER);`
+        `var s = Math.max(${fw}/window._iw, ${fh}/window._ih) * ${zoom} * 100; window._ph.resize(s, s, AnchorPosition.MIDDLECENTER);`
       );
       await this.runScript(
         `var dw = window._tpl.width, dh = window._tpl.height; window._ph.translate(${fx}+${fw}/2-dw/2+${offX}, ${fy}+${fh}/2-dh/2+${offY});`
