@@ -40,6 +40,13 @@ textarea, input[type=text], select {
 }
 textarea { min-height: 84px; resize: vertical; }
 
+/* Skip the mobile browser's 300ms double-tap-to-zoom detection on every button.
+   Without this, tapping the same nudge button twice (or two adjacent buttons in
+   quick succession — e.g. "+" then an arrow) triggers the page-level double-tap
+   zoom instead of firing the second click. On the frame/nudge/pager grids that
+   read as "the move buttons zoom instead of moving." */
+button { touch-action: manipulation; }
+
 button.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px;
                  padding: 14px; font: inherit; font-weight: 600; cursor: pointer; }
 button.primary:disabled { opacity: .5; cursor: default; }
