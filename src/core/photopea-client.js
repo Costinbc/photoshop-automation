@@ -28,6 +28,10 @@ export class PhotopeaClient {
   async _waitFor(fn, timeout = this.timeout) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
+      // Session cancels a render by flipping this flag and rebooting the iframe;
+      // any in-flight poll on the discarded client exits here instead of hanging
+      // until the 90s timeout.
+      if (this._cancelled) throw new Error("cancelled");
       const r = await fn();
       if (r) return r;
       await sleep(this.pollMs);

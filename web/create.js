@@ -23,7 +23,11 @@ const el = (tag, props = {}) => {
   return node;
 };
 const humanize = (s) => s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-const setStatus = (m) => { $("status").textContent = m; };
+const setStatus = (m, { error = false, retry = false } = {}) => {
+  $("status").textContent = m;
+  $("statusBar").classList.toggle("status-error", !!error);
+  $("retry").classList.toggle("hidden", !retry);
+};
 
 const session = new RenderSession({ base: BASE });
 
@@ -748,24 +752,130 @@ function buildRequest() {
   return req;
 }
 
-async function generate() {
-  $("generate").disabled = true;
-  const t0 = performance.now();
+// Render state machine. All UI transitions go through setState so the button
+// label, disabled flag, and retry visibility are always consistent — no
+// half-updated combos like "Cancel button visible after we already rebooted".
+//
+//   starting  – Photopea booting; button disabled
+//   ready     – idle; button "Generate", enabled
+//   rendering – render in flight; button "Cancel", enabled
+//   resetting – iframe rebooting after cancel/error; button disabled to block
+//               spam clicks that would race the reboot
+//   error     – hard failure (initial boot or session lost); "Generate" enabled
+//               (rebooted already) + Retry button visible
+let state = "starting";
+// Monotonic id: every cancel/reboot/retry bumps it. Async callbacks (render
+// resolves, status logs, ready.then waiters) check their captured token — if
+// it no longer matches, they were superseded and quietly bail out.
+let renderToken = 0;
+
+function setState(next, statusText, opts = {}) {
+  state = next;
+  const btn = $("generate");
+  const isRendering = next === "rendering";
+  btn.textContent = isRendering ? "Cancel" : "Generate";
+  btn.classList.toggle("cancel", isRendering);
+  btn.disabled = next === "starting" || next === "resetting";
+  $("statusBar").classList.toggle("status-error", next === "error");
+  $("retry").classList.toggle("hidden", next !== "error");
+  if (isRendering) {
+    $("download").classList.add("hidden");
+    $("share").classList.add("hidden");
+  }
+  if (statusText != null) $("status").textContent = statusText;
+  if (opts.status != null) $("status").textContent = opts.status;
+}
+
+// Wait for the session's current iframe to be usable. Wraps rejections so
+// callers get a friendly Error and no unhandled promise rejection ever leaks.
+// A rejection here means Photopea itself didn't come up (network blocked, 90s
+// timeout on the initial "done") — surfaced as an "error" state so the user
+// can click Retry to try loading it again.
+async function waitReady(token) {
   try {
-    const png = await session.render(buildRequest(), setStatus);
+    await session.ready;
+    return true;
+  } catch (err) {
+    if (token === renderToken) {
+      setState("error", `Photopea failed to load: ${err.message}`);
+    }
+    return false;
+  }
+}
+
+async function generate() {
+  const myToken = ++renderToken;
+  setState("rendering", "Waiting for Photopea");
+  const t0 = performance.now();
+  // Capture the promise before we await — if the user cancels mid-await, cancel()
+  // will bump renderToken and swap session.ready; our old awaited promise may
+  // reject with "cancelled", which we treat as a superseded no-op, not an error.
+  if (!(await waitReady(myToken))) return;
+  if (myToken !== renderToken) return;
+  setState("rendering", "Starting render");
+  try {
+    const png = await session.render(buildRequest(), (m) => {
+      if (myToken === renderToken) $("status").textContent = m;
+    });
+    if (myToken !== renderToken) return; // cancelled/reset while rendering
     lastPng = new Blob([png], { type: "image/png" });
     const img = $("preview");
     img.src = URL.createObjectURL(lastPng);
     img.style.display = "block";
     $("download").classList.remove("hidden");
     if (navigator.canShare) $("share").classList.remove("hidden");
-    setStatus(`Done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+    setState("ready", `Done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
   } catch (err) {
+    if (myToken !== renderToken) return; // superseded — cancel already handled UI
     console.error(err);
-    setStatus(`Error: ${err.message}`);
-  } finally {
-    $("generate").disabled = false;
+    // Photopea can wedge on a bad script (empty done, timeout). Rebuild the
+    // iframe so the next Generate isn't fighting the corpse of the last one.
+    // The form inputs stay put — only the render engine is reset.
+    const msg = err && err.message ? err.message : String(err);
+    resetSession(`Error: ${msg}. Resetting engine.`, "error");
   }
+}
+
+// Kick off a reboot and transition to `resetting` (button disabled) until the
+// new iframe is ready. On success, land in `finalState` with a friendly status;
+// on failure (Photopea won't load at all), land in `error`.
+function resetSession(nowMsg, finalState) {
+  const myToken = ++renderToken; // invalidate every pending render/callback
+  session.reboot();
+  setState("resetting", nowMsg);
+  waitReady(myToken).then((ok) => {
+    if (myToken !== renderToken) return; // user acted again before reboot finished
+    if (!ok) return; // waitReady already set the error state
+    setState(finalState, finalState === "error"
+      ? "Ready — press Generate to retry"
+      : "Ready");
+  });
+}
+
+function cancel() {
+  // Same reset path as an error, but land in `ready` (not `error`) — a user-
+  // initiated cancel isn't a failure, so no Retry chip.
+  resetSession("Cancelled — resetting engine", "ready");
+}
+
+function onGenerateClick() {
+  if (state === "rendering") cancel();
+  else if (state === "ready" || state === "error") generate();
+  // starting / resetting → button is disabled; this callback shouldn't fire.
+}
+
+function retry() {
+  if (state !== "error") return;
+  // Reboot, then auto-generate — but only if the user hasn't done anything else
+  // (checked via renderToken inside resetSession's waitReady).
+  const myToken = ++renderToken;
+  session.reboot();
+  setState("resetting", "Resetting engine");
+  waitReady(myToken).then((ok) => {
+    if (myToken !== renderToken || !ok) return;
+    setState("ready", "Ready");
+    generate();
+  });
 }
 
 function download() {
@@ -782,10 +892,12 @@ async function share() {
 }
 
 async function selectTemplate(id) {
-  setStatus("Loading template");
+  // Don't clobber the state machine — status text only; the enabled button
+  // stays consistent with `state`.
+  $("status").textContent = "Loading template";
   manifest = await session.env.loadManifest(id);
   await buildForm();
-  setStatus(session.client ? "Ready" : "Starting");
+  if (state === "ready" || state === "starting") $("status").textContent = state === "ready" ? "Ready" : "Starting";
 }
 
 // ---- Init -----------------------------------------------------------------
@@ -806,13 +918,20 @@ async function init() {
   picker.addEventListener("change", () => selectTemplate(picker.value));
   await selectTemplate(start);
 
-  await session.ready;
-  setStatus("Ready");
-  $("generate").disabled = false;
+  // Route the initial boot through the state machine so a Photopea load failure
+  // shows Retry + a clear message instead of a permanently-disabled button.
+  const bootToken = ++renderToken;
+  if (await waitReady(bootToken)) {
+    if (bootToken === renderToken) setState("ready", "Ready");
+  }
 }
 
-$("generate").addEventListener("click", generate);
+$("generate").addEventListener("click", onGenerateClick);
 $("download").addEventListener("click", download);
 $("share").addEventListener("click", share);
+$("retry").addEventListener("click", retry);
 
-init().catch((err) => { console.error(err); setStatus(`Startup error: ${err.message}`); });
+init().catch((err) => {
+  console.error(err);
+  setState("error", `Startup error: ${err.message}`);
+});
