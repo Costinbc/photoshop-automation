@@ -9,7 +9,15 @@
     /* Card-maker-specific styling. Shared tokens/primitives live in theme.css. */
     header { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 0 14px; }
     h1 { font-size: 18px; margin: 0; font-weight: 600; }
-    #status { font-size: 12px; color: var(--muted); }
+    /* Status lives next to the Generate button so it's visible right where the
+       user acts — "Loading fonts", "Placing image", errors, cancel confirmation. */
+    .status-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px;
+                  min-height: 20px; font-size: 13px; color: var(--muted); }
+    .status-bar .status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-bar.status-error { color: #ff8080; }
+    .status-bar .retry-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                             border-radius: 8px; padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+    button.primary.cancel { background: transparent; color: var(--text); border: 1px solid var(--line); }
     .row { display: flex; align-items: center; gap: 12px; }
     input[type=range] { flex: 1; accent-color: var(--accent); }
     .pill { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text); background: var(--panel-2);
@@ -117,7 +125,6 @@
   <div class="wrap">
     <header>
       <h1>Create a post</h1>
-      <span id="status">Starting</span>
     </header>
 
     <div class="card">
@@ -131,6 +138,10 @@
       <button id="generate" class="primary" disabled>Generate</button>
       <button id="download" class="ghost hidden">Save</button>
       <button id="share" class="ghost hidden">Share</button>
+    </div>
+    <div id="statusBar" class="status-bar">
+      <span id="status" class="status-text">Starting</span>
+      <button id="retry" class="retry-btn hidden" type="button">Retry</button>
     </div>
     <p class="hint">Leave an image empty to keep the template's default.</p>
 
