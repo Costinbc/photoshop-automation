@@ -537,9 +537,18 @@ async function buildForm() {
   }
   if (manifest.emoji) {
     const keys = Object.keys(manifest.emoji.layers);
+    // "None" as the leading choice — every template ships with an emoji
+    // enabled by default in the PSD; picking None hides all of them and, for
+    // inline-follow templates, strips any [e] token from the text. Value ""
+    // (falsy) so the existing `if (controls.emoji) req.emoji = …` skip works.
+    const emojiKeys = ["", ...keys];
     controls.emoji = keys[0];
     const emojiField = field("Emoji",
-      segmented(keys.map((k) => ({ value: k, label: humanize(k) })), controls.emoji, (k) => { controls.emoji = k; }));
+      segmented(
+        emojiKeys.map((k) => ({ value: k, label: k === "" ? "None" : humanize(k) })),
+        controls.emoji,
+        (k) => { controls.emoji = k; },
+      ));
     emojiField.append(frameControl("emoji"));
     if (manifest.emoji.follow) {
       emojiField.append(el("p", { className: "hint",

@@ -68,7 +68,9 @@ export async function render(request, { client, env, log = noop, installedFonts 
 
   // Inline emoji flows with the block text (see inline-emoji.js): when
   // configured, the token in the headline is replaced by a reserved gap here,
-  // and the emoji SO is translated onto that gap in applyEmoji.
+  // and the emoji SO is translated onto that gap in applyEmoji. Skipped when
+  // the user picks "None" (request.emoji falsy) — the [e] token is stripped
+  // below so it doesn't render as literal text.
   const inlineEmoji =
     manifest.emoji && manifest.emoji.follow && request.emoji && block &&
     manifest.emoji.follow.field === block.field
@@ -76,12 +78,19 @@ export async function render(request, { client, env, log = noop, installedFonts 
       : null;
   let emojiPlace = null;
   let emojiScalePct = 100;
+  // Strip any leftover [e] token from a follow-field's text when emoji is off,
+  // so the user's inline marker doesn't render as visible text.
+  const stripInlineToken = manifest.emoji && manifest.emoji.follow && !request.emoji;
 
   // Text is applied first, then layout reflow, then images, then overlays.
   const upper = manifest.textTransform === "uppercase";
   for (const [key, layer] of Object.entries(manifest.text || {})) {
     if (request[key] == null) continue;
     let value = upper ? String(request[key]).toUpperCase() : String(request[key]);
+    if (stripInlineToken && manifest.emoji.follow.field === key) {
+      // Remove the marker plus any surrounding whitespace it left behind.
+      value = value.replace(/\s*\[e\]\s*/gi, " ").replace(/\s+/g, " ").trim();
+    }
     const fieldBlock = blockByField.get(key);
     if (fieldBlock && inlineEmoji && inlineEmoji.follow.field === key) {
       const size = sizeFor(request, fieldBlock);
@@ -323,8 +332,15 @@ async function applyTweet(request, manifest, offsets, client, env, log) {
 const emojiLayerName = (entry) => (typeof entry === "string" ? entry : entry.layer);
 
 async function applyEmoji(request, manifest, client, log, ctx = {}) {
-  if (!(request.emoji && manifest.emoji)) return;
+  if (!manifest.emoji) return;
   const layers = manifest.emoji.layers;
+  // "None" case: user unselected the emoji — hide every emoji layer so the PSD
+  // default doesn't leak through, then bail before placement/scaling.
+  if (!request.emoji) {
+    for (const entry of Object.values(layers)) await client.setVisible(emojiLayerName(entry), false);
+    log("emoji hidden (none selected)");
+    return;
+  }
   const chosen = layers[request.emoji];
   if (!chosen) {
     throw new Error(`Unknown emoji '${request.emoji}' (options: ${Object.keys(layers).join(", ")})`);
