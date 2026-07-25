@@ -104,6 +104,10 @@ function buildFxDefs() {
       R("Angle",     "angle",     -45, 45, 0, { suffix: "°" }),
       C("Color",     "color",     "#f5f5fa", { full: true }),
     ]},
+    { key: "grain", label: "Film grain", params: [
+      R("Intensity", "intensity", 0, 100, 15, { suffix: "%" }),
+      R("Size",      "size",      1, 6, 2, { suffix: "px" }),
+    ]},
     { key: "spotlight", label: "Spotlight", params: [
       R("Darkness",  "darkness",  0, 100, 75, { suffix: "%" }),
       R("Halo size", "scale",     30, 200, 100, { suffix: "%" }),

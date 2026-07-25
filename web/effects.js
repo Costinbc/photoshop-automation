@@ -548,6 +548,45 @@ function smokePlumes(canvas, ctx, { params = {} } = {}) {
   ctx.restore();
 }
 
+// ── Film grain ──────────────────────────────────────────────────────────────
+// Monochrome luminance noise, applied as a signed delta so it darkens and
+// brightens equally (no shift in average brightness). `size` clumps pixels
+// into square cells so the grain reads at IG's downscaled preview size.
+function filmGrain(canvas, ctx, { params = {} } = {}) {
+  const w = canvas.width, h = canvas.height;
+  const intensity = (params.intensity ?? 15) / 100;
+  const size = Math.max(1, Math.round(params.size ?? 2));
+  const amp = 60 * intensity;
+  const rng = mulberry32(101);
+
+  const img = ctx.getImageData(0, 0, w, h);
+  const px = img.data;
+  if (size === 1) {
+    for (let i = 0; i < px.length; i += 4) {
+      const n = (rng() - 0.5) * amp;
+      px[i]     = Math.max(0, Math.min(255, px[i]     + n));
+      px[i + 1] = Math.max(0, Math.min(255, px[i + 1] + n));
+      px[i + 2] = Math.max(0, Math.min(255, px[i + 2] + n));
+    }
+  } else {
+    for (let y = 0; y < h; y += size) {
+      for (let x = 0; x < w; x += size) {
+        const n = (rng() - 0.5) * amp;
+        const yEnd = Math.min(h, y + size), xEnd = Math.min(w, x + size);
+        for (let yy = y; yy < yEnd; yy++) {
+          for (let xx = x; xx < xEnd; xx++) {
+            const i = (yy * w + xx) * 4;
+            px[i]     = Math.max(0, Math.min(255, px[i]     + n));
+            px[i + 1] = Math.max(0, Math.min(255, px[i + 1] + n));
+            px[i + 2] = Math.max(0, Math.min(255, px[i + 2] + n));
+          }
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 // ── Spotlight ───────────────────────────────────────────────────────────────
 function spotlight(canvas, ctx, { params = {}, center } = {}) {
   const w = canvas.width, h = canvas.height;
@@ -604,6 +643,7 @@ const EFFECTS = {
   brush: brushStrokes,
   spatter: inkSpatter,
   smoke: smokePlumes,
+  grain: filmGrain,
   spotlight,
 };
 
@@ -653,8 +693,9 @@ export async function applyEffects(bytes, effects, base = "", { output = "jpeg",
   ctx.drawImage(bmp, 0, 0);
 
   const paramsFor = (k) => (typeof effects[k] === "object" ? effects[k] : {});
-  const clarityKeys = keys.filter((k) => k === "clarity");
-  const overlayKeys = keys.filter((k) => k !== "clarity");
+  const PRE_MASK = new Set(["clarity", "grain"]);
+  const clarityKeys = keys.filter((k) => PRE_MASK.has(k));
+  const overlayKeys = keys.filter((k) => !PRE_MASK.has(k));
 
   for (const key of clarityKeys) {
     await EFFECTS[key](canvas, ctx, { params: paramsFor(key), base });
