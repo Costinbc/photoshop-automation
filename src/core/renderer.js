@@ -261,8 +261,9 @@ async function applyImages(request, manifest, offsets, client, env, log) {
     // keeping clarity on the whole image. Single-layer approach — no cutout
     // sandwich, no alignment/ghost issues. Skip when no overlay effect is
     // active (the ML work would be invisible).
+    const PRE_MASK_FX = new Set(["clarity", "grain"]);
     const overlayActive = request.effects &&
-      Object.keys(request.effects).some((k) => k !== "clarity" && request.effects[k]);
+      Object.keys(request.effects).some((k) => !PRE_MASK_FX.has(k) && request.effects[k]);
     const useSubjectCut =
       request.subjectCut !== false && request.mode === "single" && env.subjectMask && overlayActive;
 
