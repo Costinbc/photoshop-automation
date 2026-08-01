@@ -74,7 +74,11 @@
     .imgpick-chosen { align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); }
     .imgpick-chosen:not(.hidden) { display: flex; }
     .imgpick-chosen img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+    .imgpick-chosen img.broken { opacity: .4; filter: grayscale(1); position: relative; }
+    .imgpick-chosen .imgpick-status { color: #ff8080; font-size: 12px; }
     .imgpick-chosen button { background: transparent; color: var(--accent); border: 0; font: inherit; cursor: pointer; margin-left: auto; }
+    /* Broken search-grid thumbs get a red X overlay if we chose not to remove them. */
+    .search-grid img.broken { opacity: .35; filter: grayscale(1); cursor: not-allowed; border-color: #ff8080 !important; }
     /* Photo effects toggle grid */
     .fx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
     .fx-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text);

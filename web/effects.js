@@ -590,8 +590,8 @@ function filmGrain(canvas, ctx, { params = {} } = {}) {
 // ── Spotlight ───────────────────────────────────────────────────────────────
 function spotlight(canvas, ctx, { params = {}, center } = {}) {
   const w = canvas.width, h = canvas.height;
-  const darkness = (params.darkness ?? 75) / 100;
-  const scaleMul = (params.scale ?? 100) / 100;
+  const darkness = (params.darkness ?? 88) / 100;
+  const scaleMul = (params.scale ?? 70) / 100;
   const dxPct = (params.dx ?? 0) / 100;
   const dyPct = (params.dy ?? 0) / 100;
   const tint = params.tint ?? "#ffffff";
@@ -647,6 +647,12 @@ const EFFECTS = {
   spotlight,
 };
 
+// Face-anchored spotlight center: aim near the TOP of the subject bounding box
+// (basketball shots are near-always head-up, so ~top 15% ≈ face) using the
+// row-weighted X centroid at the top to pick a face-width X (helps when arms
+// stretched laterally would bias a full-body centroid). Radius sized to a
+// FACE not a body — enough to light the head and a shoulder, not the whole
+// silhouette.
 async function computeSubjectCenter(maskBytes, targetW, targetH) {
   const bmp = await createImageBitmap(new Blob([maskBytes]));
   const scale = 128 / Math.max(bmp.width, bmp.height);
@@ -656,27 +662,55 @@ async function computeSubjectCenter(maskBytes, targetW, targetH) {
   const cx = c.getContext("2d");
   cx.drawImage(bmp, 0, 0, w, h);
   const data = cx.getImageData(0, 0, w, h).data;
-  let sumX = 0, sumY = 0, sumW = 0;
   let minX = w, maxX = 0, minY = h, maxY = 0;
+  const rowMinX = new Int16Array(h), rowMaxX = new Int16Array(h);
+  rowMinX.fill(w); rowMaxX.fill(-1);
+  let any = false;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const a = data[(y * w + x) * 4 + 3];
-      if (a < 32) continue;
-      sumX += x * a; sumY += y * a; sumW += a;
+      if (data[(y * w + x) * 4 + 3] < 32) continue;
+      any = true;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
+      if (x < rowMinX[y]) rowMinX[y] = x;
+      if (x > rowMaxX[y]) rowMaxX[y] = x;
     }
   }
-  if (sumW === 0) return null;
+  if (!any) return null;
   const scaleX = targetW / w, scaleY = targetH / h;
-  const bboxW = (maxX - minX) * scaleX;
-  const bboxH = (maxY - minY) * scaleY;
+
+  // Face band = top 20% of the subject bbox. Average the row midpoints in that
+  // band for the X centre — narrower than the full-body midpoint when the
+  // subject has spread arms.
+  const bboxH = maxY - minY;
+  const faceBandEnd = Math.min(maxY, minY + Math.max(1, Math.round(bboxH * 0.2)));
+  let sxMid = 0, nRows = 0;
+  for (let y = minY; y <= faceBandEnd; y++) {
+    if (rowMaxX[y] < 0) continue;
+    sxMid += (rowMinX[y] + rowMaxX[y]) / 2;
+    nRows++;
+  }
+  const cxSmall = nRows ? sxMid / nRows : (minX + maxX) / 2;
+  // Face centre Y ≈ 8% down the subject bbox from its top — sits on the face,
+  // not the top of the head.
+  const cySmall = minY + bboxH * 0.08;
+
+  // Radius ≈ half the top-20% band's average WIDTH: fits face + shoulders,
+  // not the whole body. Clamped so tiny masks still get a visible pool.
+  let sw = 0;
+  for (let y = minY; y <= faceBandEnd; y++) {
+    if (rowMaxX[y] < 0) continue;
+    sw += (rowMaxX[y] - rowMinX[y]);
+  }
+  const faceWidthSmall = nRows ? sw / nRows : (maxX - minX);
+  const radiusPx = Math.max(faceWidthSmall * scaleX * 0.6, 60);
+
   return {
-    cx: (sumX / sumW) * scaleX,
-    cy: (sumY / sumW) * scaleY,
-    radius: Math.max(bboxW, bboxH) * 0.65,
+    cx: cxSmall * scaleX,
+    cy: cySmall * scaleY,
+    radius: radiusPx,
   };
 }
 
@@ -702,26 +736,59 @@ export async function applyEffects(bytes, effects, base = "", { output = "jpeg",
   }
 
   if (mask && overlayKeys.length) {
+    // Spotlight is inverted vs. other overlays: it targets the SUBJECT (dark
+    // vignette on the player with a bright pool over the face) instead of
+    // the background. Bucket it separately so the standard subject-preserve
+    // composite doesn't wipe out its intended effect on the subject.
+    const spotlightKeys = overlayKeys.filter((k) => k === "spotlight");
+    const bgOverlayKeys = overlayKeys.filter((k) => k !== "spotlight");
+
     const subjectSnap = new OffscreenCanvas(bmp.width, bmp.height);
     subjectSnap.getContext("2d").drawImage(canvas, 0, 0);
 
-    const center = overlayKeys.includes("spotlight")
+    const center = spotlightKeys.length
       ? await computeSubjectCenter(mask, bmp.width, bmp.height)
       : null;
 
-    for (const key of overlayKeys) {
+    // Background-targeted overlays first — applied to whole canvas, then the
+    // clean subject is composited back on top from `subjectSnap`.
+    for (const key of bgOverlayKeys) {
       await EFFECTS[key](canvas, ctx, { params: paramsFor(key), base, center });
     }
 
     const maskBmp = await createImageBitmap(new Blob([mask]));
-    const cutoutCanvas = new OffscreenCanvas(bmp.width, bmp.height);
-    const cctx = cutoutCanvas.getContext("2d");
-    cctx.drawImage(subjectSnap, 0, 0);
-    cctx.globalCompositeOperation = "destination-in";
-    cctx.imageSmoothingEnabled = true;
-    cctx.imageSmoothingQuality = "high";
-    cctx.drawImage(maskBmp, 0, 0, bmp.width, bmp.height);
-    ctx.drawImage(cutoutCanvas, 0, 0);
+    if (bgOverlayKeys.length) {
+      const cutoutCanvas = new OffscreenCanvas(bmp.width, bmp.height);
+      const cctx = cutoutCanvas.getContext("2d");
+      cctx.drawImage(subjectSnap, 0, 0);
+      cctx.globalCompositeOperation = "destination-in";
+      cctx.imageSmoothingEnabled = true;
+      cctx.imageSmoothingQuality = "high";
+      cctx.drawImage(maskBmp, 0, 0, bmp.width, bmp.height);
+      ctx.drawImage(cutoutCanvas, 0, 0);
+    }
+
+    // Subject-targeted overlays (spotlight): snapshot canvas, apply effect,
+    // mask the result to the subject region, then paint it over the untouched
+    // canvas — so the background outside the subject stays untouched.
+    for (const key of spotlightKeys) {
+      const preSpot = new OffscreenCanvas(bmp.width, bmp.height);
+      preSpot.getContext("2d").drawImage(canvas, 0, 0);
+
+      await EFFECTS[key](canvas, ctx, { params: paramsFor(key), base, center });
+
+      const spotSubject = new OffscreenCanvas(bmp.width, bmp.height);
+      const ssctx = spotSubject.getContext("2d");
+      ssctx.drawImage(canvas, 0, 0);
+      ssctx.globalCompositeOperation = "destination-in";
+      ssctx.imageSmoothingEnabled = true;
+      ssctx.imageSmoothingQuality = "high";
+      ssctx.drawImage(maskBmp, 0, 0, bmp.width, bmp.height);
+
+      ctx.clearRect(0, 0, bmp.width, bmp.height);
+      ctx.drawImage(preSpot, 0, 0);
+      ctx.drawImage(spotSubject, 0, 0);
+    }
   } else {
     for (const key of overlayKeys) {
       await EFFECTS[key](canvas, ctx, { params: paramsFor(key), base, center: null });

@@ -109,8 +109,8 @@ function buildFxDefs() {
       R("Size",      "size",      1, 6, 2, { suffix: "px" }),
     ]},
     { key: "spotlight", label: "Spotlight", params: [
-      R("Darkness",  "darkness",  0, 100, 75, { suffix: "%" }),
-      R("Halo size", "scale",     30, 200, 100, { suffix: "%" }),
+      R("Darkness",  "darkness",  0, 100, 88, { suffix: "%" }),
+      R("Halo size", "scale",     30, 200, 70, { suffix: "%" }),
       R("Nudge X",   "dx",        -50, 50, 0, { suffix: "%" }),
       R("Nudge Y",   "dy",        -50, 50, 0, { suffix: "%" }),
       C("Light tint","tint",      "#ffffff", { full: true }),
@@ -220,7 +220,10 @@ function imagePicker() {
       // Show each result at its true aspect ratio (like Google Images). Setting it
       // from the known dimensions also reserves the right height before load.
       if (r.w && r.h) im.style.aspectRatio = `${r.w} / ${r.h}`;
-      im.addEventListener("click", () => useWebImage(r));
+      // Broken thumbs (dead hotlinks, CDN 403s) shouldn't be pickable — silently
+      // drop them so a user can't select a photo that would fail at render.
+      im.addEventListener("error", () => im.remove());
+      im.addEventListener("click", () => useWebImage(r, im));
       grid.append(im);
     }
     markSelection();
@@ -237,16 +240,38 @@ function imagePicker() {
     chosen.classList.add("hidden");
     selectedFull = null; markSelection();
   };
-  const useWebImage = (r) => {
-    value = `/api/fetch?url=${encodeURIComponent(r.full)}`;
+  const useWebImage = (r, thumbEl) => {
+    const proxied = `/api/fetch?url=${encodeURIComponent(r.full)}`;
+    value = proxied;
     chosenImg.src = r.thumb;
+    chosenImg.classList.remove("broken");
     chosen.classList.remove("hidden");
+    chosen.querySelector(".imgpick-status")?.remove();
     file.value = "";
     selectedFull = r.full; markSelection();
+
+    // Preflight the full-size fetch — the Serper thumbnail can load fine while
+    // the source host blocks/404s the actual image (dead hotlinks, geo-blocks,
+    // hotlink protection). Catch it now so the user picks another instead of
+    // hitting Generate and getting a render failure.
+    const probe = new Image();
+    probe.onerror = () => {
+      // Only flag if this is still the selected pick — user may have moved on.
+      if (selectedFull !== r.full) return;
+      value = null;
+      chosenImg.classList.add("broken");
+      if (thumbEl) { thumbEl.classList.add("broken"); thumbEl.title = "Image unavailable"; }
+      const status = el("span", { className: "imgpick-status", textContent: "Unavailable — pick another" });
+      chosen.querySelector(".imgpick-status")?.remove();
+      chosen.append(status);
+    };
+    probe.src = proxied;
   };
   const clear = () => {
     value = file.files[0] || null;
     chosen.classList.add("hidden");
+    chosen.querySelector(".imgpick-status")?.remove();
+    chosenImg.classList.remove("broken");
     selectedFull = null; markSelection();
   };
 
@@ -301,6 +326,8 @@ const ZOOM_MIN = 0.5, ZOOM_MAX = 3; // clamp: 0.5x reveals more, 3x crops in
 function frameControl(key) {
   controls.offsets[key] = [0, 0];
   controls.zoom[key] = 1;
+  if (!controls.flip) controls.flip = {};
+  controls.flip[key] = { h: false, v: false };
 
   const offX = el("input", { type: "number", className: "nudge-input", value: "0", title: "X offset (px)" });
   const offY = el("input", { type: "number", className: "nudge-input", value: "0", title: "Y offset (px)" });
@@ -342,6 +369,16 @@ function frameControl(key) {
     b.addEventListener("click", onClick);
     return b;
   };
+  const flipBtn = (axis, label, title) => {
+    const b = el("button", { type: "button", className: "nudge-btn", textContent: label, title });
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => {
+      controls.flip[key][axis] = !controls.flip[key][axis];
+      b.setAttribute("aria-pressed", String(controls.flip[key][axis]));
+    });
+    return b;
+  };
+
   const wrap = el("div", { className: "nudge" });
   wrap.append(
     el("span", { className: "nudge-label", textContent: "Frame" }),
@@ -354,9 +391,14 @@ function frameControl(key) {
     textBtn("-", "Zoom out", () => zoomBy(-ZOOM_STEP)),
     textBtn("+", "Zoom in", () => zoomBy(ZOOM_STEP)),
     zoomIn,
+    el("span", { className: "nudge-label", textContent: "Flip" }),
+    flipBtn("h", "⇋", "Flip horizontally"),
+    flipBtn("v", "⇅", "Flip vertically"),
     textBtn("Reset", "Re-center and reset zoom", () => {
       controls.offsets[key] = [0, 0];
       controls.zoom[key] = 1;
+      controls.flip[key] = { h: false, v: false };
+      for (const b of wrap.querySelectorAll('[aria-pressed]')) b.setAttribute("aria-pressed", "false");
       update();
     }),
   );
@@ -398,7 +440,7 @@ function blockNudge(field) {
 async function buildForm() {
   const form = $("form");
   form.replaceChildren();
-  controls = { texts: {}, fontSizes: {}, verticalScales: {}, blockOffsets: {}, images: {}, offsets: {}, zoom: {}, effects: {} };
+  controls = { texts: {}, fontSizes: {}, verticalScales: {}, blockOffsets: {}, images: {}, offsets: {}, zoom: {}, flip: {}, effects: {} };
   measurer = null; measurerSize = null;
 
   const blocks = layoutBlocks(manifest);
@@ -726,9 +768,10 @@ function buildRequest() {
   if (controls.tweetClearWm && !controls.tweetClearWm.checked) req.tweetKeepWatermark = true;
   if (controls.emoji) req.emoji = controls.emoji;
 
-  // Framing offsets + zoom — all layers that have a frame control.
+  // Framing offsets + zoom + flip — all layers that have a frame control.
   const offsets = {};
   const zoom = {};
+  const flip = {};
   const used = [
     ...Object.keys(req.images || {}),
     ...(req.circle ? ["circle"] : []),
@@ -740,9 +783,12 @@ function buildRequest() {
     if (o && (o[0] || o[1])) offsets[key] = o;
     const z = controls.zoom[key];
     if (z && z !== 1) zoom[key] = z;
+    const f = controls.flip && controls.flip[key];
+    if (f && (f.h || f.v)) flip[key] = (f.h ? "h" : "") + (f.v ? "v" : "");
   }
   if (Object.keys(offsets).length) req.offsets = offsets;
   if (Object.keys(zoom).length) req.zoom = zoom;
+  if (Object.keys(flip).length) req.flip = flip;
 
   // Effects: unchecked → omitted; checked with unchanged knobs → `true`;
   // any knob differs from its default → { paramKey: value, ... } overrides.
