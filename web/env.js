@@ -27,6 +27,24 @@ async function downscale(bytes, { maxSize, lossless = false } = {}) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+// Flip bytes horizontally, vertically, or both. `mode` is "h", "v", or "hv"
+// (case-insensitive); anything else / falsy is a no-op. Returns the same
+// content type the source would export as (JPEG for photos).
+async function flipBytes(bytes, mode) {
+  if (!mode) return bytes;
+  const m = String(mode).toLowerCase();
+  const fh = m.includes("h"), fv = m.includes("v");
+  if (!fh && !fv) return bytes;
+  const bmp = await createImageBitmap(new Blob([bytes]));
+  const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+  const ctx = canvas.getContext("2d");
+  ctx.translate(fh ? bmp.width : 0, fv ? bmp.height : 0);
+  ctx.scale(fh ? -1 : 1, fv ? -1 : 1);
+  ctx.drawImage(bmp, 0, 0);
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
 // Load a font file as a FontFace under a stable family name (once per file).
 const fontFamilies = new Map();
 async function ensureFamily(base, file) {
@@ -86,8 +104,13 @@ export function createWebEnv({ base = "" } = {}) {
         bytes = await fetchBytes(ref); // absolute URL / proxied web image — fetch as-is
       else bytes = await fetchBytes(`${base}/${ref}`); // repo asset (already sized)
       bytes = await downscale(bytes, opts);
+      if (opts.flip) bytes = await flipBytes(bytes, opts.flip);
       if (opts.effects) bytes = await applyEffects(bytes, opts.effects, base);
       return bytes;
+    },
+
+    flipImage(bytes, mode) {
+      return flipBytes(bytes, mode);
     },
 
     keyBlack(bytes, opts = {}) {

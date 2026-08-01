@@ -153,6 +153,23 @@ export async function render(request, { client, env, log = noop, installedFonts 
 // dependent layers so they keep fixed gaps (quote marks above, bar/caption
 // below, etc.). Multi-block templates (e.g. the two-quote card) reflow each
 // headline independently.
+// Shrink a paragraph-text layer's font size so long text fits in one line.
+// Photopea's ink bounds report only the visible portion, so a caption clipped
+// by its paragraph box height reads as one line even when wrapping — we can't
+// detect wrap from bounds. Fall back to a character-count heuristic: assume
+// the caption is designed to fit `oneLineChars` chars at its default size,
+// and shrink proportionally when the actual text is longer. Templates can
+// override the default (26) via `below[].oneLineChars`. Skip shape layers.
+async function fitOneLine(layer, oneLineChars, client) {
+  const MIN_PCT = 0.55, MAX_CHARS = oneLineChars || 26;
+  const initial = await client.getFontSize(layer);
+  if (!initial) return;
+  const text = await client.getText(layer);
+  if (!text || text.length <= MAX_CHARS) return;
+  const factor = Math.max(MIN_PCT, MAX_CHARS / text.length);
+  await client.setFontSize(layer, initial * factor);
+}
+
 async function reflow(request, manifest, client, log) {
   const blocks = getBlocks(manifest);
   if (!blocks.length) return;
@@ -178,14 +195,36 @@ async function reflow(request, manifest, client, log) {
       await client.translateLayer(L.text, 0, L.bottomY - tb.b);
     }
 
+    // Wrapped-caption fix: dependent text layers (captions) inherit a leading
+    // authored for one line in the PSD, so when a longer caption wraps to two
+    // lines the second line lands on top of the first. Restore auto-leading
+    // so wrapped lines space correctly, then auto-shrink font size until the
+    // caption fits on a single line — the paragraph text box in the PSD isn't
+    // tall enough for wrapped lines, so a too-long caption would otherwise get
+    // clipped. No-op on shape layers.
+    for (const a of L.above || []) await client.enableAutoLeading(a.layer);
+    for (const d of L.below || []) await client.enableAutoLeading(d.layer);
+    for (const d of L.below || []) await fitOneLine(d.layer, d.oneLineChars, client);
+    for (const a of L.above || []) await fitOneLine(a.layer, a.oneLineChars, client);
+
+    // Scale the manifest's absolute gap px by the block's current text size —
+    // when the user shrinks the quote (fontSize slider or vertical-scale
+    // slider), a fixed 58 px gap looks huge relative to the compressed text.
+    // Multiplying by (size/default) * (vScale/100) keeps the gap in visual
+    // proportion. Default is the manifest's `fontSizeDefault`; vScale is 100
+    // when unset.
+    const defaultSize = L.fontSizeDefault || size || 1;
+    const vScaleFactor = (vScale != null ? vScale : 100) / 100;
+    const gapScale = (size ? size / defaultSize : 1) * vScaleFactor;
+
     const tb = await client.bounds(L.text);
     for (const a of L.above || []) {
       const b = await client.bounds(a.layer);
-      await client.translateLayer(a.layer, 0, tb.t - a.gap - b.b); // bottom -> gap above text top
+      await client.translateLayer(a.layer, 0, tb.t - a.gap * gapScale - b.b); // bottom -> gap above text top
     }
     for (const d of L.below || []) {
       const b = await client.bounds(d.layer);
-      await client.translateLayer(d.layer, 0, tb.b + d.gap - b.t); // top -> gap below text bottom
+      await client.translateLayer(d.layer, 0, tb.b + d.gap * gapScale - b.t); // top -> gap below text bottom
     }
 
     // Group bottom-anchor: shift the whole reflowed unit (block + above/below)
@@ -229,10 +268,12 @@ async function applyImages(request, manifest, offsets, client, env, log) {
   for (const layer of mode.hide || []) await client.setVisible(layer, false);
 
   const zooms = request.zoom || {};
+  const flips = request.flip || {};
   for (const [slotKey, ref] of Object.entries(request.images || {})) {
     const slot = mode.slots[slotKey];
     if (!slot) throw new Error(`Mode '${request.mode}' has no image slot '${slotKey}'`);
     const off = offsets[slotKey] || [0, 0];
+    const flip = flips[slotKey];
 
     // Two ways a slot clips its photo:
     //  - `target`+`clip`: clip to a PSD layer authored for it (quote/tweet split).
@@ -269,7 +310,7 @@ async function applyImages(request, manifest, offsets, client, env, log) {
 
     let placedBytes;
     if (useSubjectCut) {
-      const raw = await env.loadImage(ref, { maxSize: 2000 });
+      const raw = await env.loadImage(ref, { maxSize: 2000, flip });
       let mask = null;
       try {
         mask = await env.subjectMask(raw);
@@ -281,7 +322,7 @@ async function applyImages(request, manifest, offsets, client, env, log) {
       placedBytes = await env.applyEffects(raw, request.effects, { mask });
       log(`image slot '${slotKey}' placed${mask ? " (subject-protected)" : ""}`);
     } else {
-      placedBytes = await env.loadImage(ref, { maxSize: 2000, effects: request.effects });
+      placedBytes = await env.loadImage(ref, { maxSize: 2000, effects: request.effects, flip });
       log(`image slot '${slotKey}' placed`);
     }
     await client.placeImage(placedBytes, placeOpts);
@@ -295,7 +336,8 @@ async function applyCircle(request, manifest, offsets, client, env, log) {
   if (!c) return;
   if (request.circle) {
     const off = offsets.circle || [0, 0];
-    await client.placeImage(await env.loadImage(request.circle, { maxSize: 1200 }), {
+    const cflip = request.flip && request.flip.circle;
+    await client.placeImage(await env.loadImage(request.circle, { maxSize: 1200, flip: cflip }), {
       name: "IMG_circle",
       frame: [...c.frame, off[0], off[1]],
       above: c.target,

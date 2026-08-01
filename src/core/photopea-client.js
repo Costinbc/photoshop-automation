@@ -120,11 +120,47 @@ export class PhotopeaClient {
   async setFontSize(layer, size) {
     await this.runScript(`${PRELUDE}\nfindLayer(window._tpl, ${js(layer)}).textItem.size = ${Number(size)};`);
   }
+  // Returns the text layer's current font size in px, or 0 if not a text layer.
+  // Photopea's LayerKind constants are unreliable — comparing via numeric
+  // TEXT-kind (2) matches PS's enum ordering.
+  async getFontSize(layer) {
+    // textItem.size is an obfuscated UnitValue in Photopea — read .value.
+    const s = await this.evalString(
+      `${PRELUDE}\nvar _l = findLayer(window._tpl, ${js(layer)});\n__RET__ = (_l.kind == LayerKind.TEXT) ? String(_l.textItem.size.value != null ? _l.textItem.size.value : _l.textItem.size) : "0";`
+    );
+    return parseFloat(s) || 0;
+  }
+  // Returns the text layer's current contents, or "" if not a text layer.
+  async getText(layer) {
+    return this.evalString(
+      `${PRELUDE}\nvar _l = findLayer(window._tpl, ${js(layer)});\n__RET__ = (_l.kind == LayerKind.TEXT || _l.kind == 2) ? _l.textItem.contents : "";`
+    );
+  }
 
   // Set fixed line spacing (leading), in the same units as font size.
   async setLeading(layer, value) {
     await this.runScript(
       `${PRELUDE}\nvar ti = findLayer(window._tpl, ${js(layer)}).textItem; ti.useAutoLeading = false; ti.autoLeading = false; ti.leading = ${Number(value)};`
+    );
+  }
+  // Restore Photopea's default line-height computation on a dependent text
+  // layer (caption) so wrapped lines don't stack on top of each other, and
+  // grow its paragraph-text box height so wrapped lines aren't clipped by an
+  // author-set one-line box. UnitValues in Photopea report their numeric via
+  // .value; assign a plain number back. Non-text layers are gated by kind
+  // (touching .textItem on a shape silently crashes Photopea).
+  async enableAutoLeading(layer) {
+    await this.runScript(
+      `${PRELUDE}\nvar _l = findLayer(window._tpl, ${js(layer)});
+       if (_l.kind == LayerKind.TEXT) {
+         var _ti = _l.textItem;
+         _ti.useAutoLeading = true; _ti.autoLeading = true;
+         try {
+           var _sz = (_ti.size && _ti.size.value != null) ? _ti.size.value : Number(_ti.size);
+           var _h  = (_ti.height && _ti.height.value != null) ? _ti.height.value : Number(_ti.height);
+           if (!isNaN(_sz) && !isNaN(_h)) _ti.height = Math.max(_h, _sz * 6);
+         } catch (e) {}
+       }`
     );
   }
   async setVerticalScale(layer, pct) {
