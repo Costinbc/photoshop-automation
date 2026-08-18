@@ -1,0 +1,55 @@
+{
+  "name": "story_poll_template",
+  "file": "templates/story_poll_template.psd",
+  "canvas": [1080, 1920],
+  "fonts": ["impact.ttf"],
+  "textTransform": "uppercase",
+
+  "text": {
+    "question": "question",
+    "resume":   "resume"
+  },
+
+  "textStrokes": {
+    "question": { "size": 2, "color": [0, 0, 0] },
+    "resume":   { "size": 2, "color": [0, 0, 0] }
+  },
+
+  "layout": {
+    "block": {
+      "text": "question",
+      "field": "question",
+      "font": "impact.ttf",
+      "balance": true,
+      "width": 1020,
+      "fontSizeDefault": 72,
+      "leadingRatio": 1.0,
+      "bottomY": 780
+    }
+  },
+
+  "imageModes": {
+    "single": {
+      "hide": [],
+      "slots": {
+        "main": { "target": "story_bg", "frame": [0, 0, 1080, 1920] }
+      }
+    },
+    "split": {
+      "hide": ["story_bg"],
+      "anchor": "story_bg",
+      "slots": {
+        "top":    { "frame": [0, 0, 1080, 960],   "synthClip": true },
+        "bottom": { "frame": [0, 960, 1080, 960], "synthClip": true }
+      }
+    },
+    "splitH": {
+      "hide": ["story_bg"],
+      "anchor": "story_bg",
+      "slots": {
+        "left":  { "frame": [0, 0, 540, 1920],   "synthClip": true },
+        "right": { "frame": [540, 0, 540, 1920], "synthClip": true }
+      }
+    }
+  }
+}

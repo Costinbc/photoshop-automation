@@ -5,6 +5,7 @@
     { "id": "triple_quote_template", "label": "Triple Quote", "thumb": "/web/thumbs/triple_quote_template.png" },
     { "id": "tweet_big_simple_template", "label": "Tweet Repost", "thumb": "/web/thumbs/tweet_big_simple_template.png" },
     { "id": "trending_text_simple_template", "label": "Trending Headline", "thumb": "/web/thumbs/trending_text_simple_template.png" },
-    { "id": "trending_mare_template", "label": "Trending Big", "thumb": "/web/thumbs/trending_mare_template.png" }
+    { "id": "trending_mare_template", "label": "Trending Big", "thumb": "/web/thumbs/trending_mare_template.png" },
+    { "id": "story_poll_template", "label": "Story Poll (1080×1920)", "thumb": "/web/thumbs/story_poll_template.png" }
   ]
 }

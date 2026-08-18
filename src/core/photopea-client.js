@@ -182,6 +182,43 @@ export class PhotopeaClient {
     );
   }
 
+  // Apply an outer stroke as a layer effect (used for text legibility over
+  // photo backgrounds). Photopea's DOM has no direct API for layer styles, so
+  // this goes through the action manager (same descriptors as Photoshop). We
+  // apply it at render time rather than baking into the PSD because Photopea's
+  // exportPSD flattens effects, so a style set at build time wouldn't survive
+  // the round-trip. `color` is [r,g,b] 0..255; `size` is pixels.
+  async applyStroke(layer, size, color) {
+    const [r, g, b] = color;
+    await this.runScript(
+      `${PRELUDE}
+       var _q = findLayer(window._tpl, ${js(layer)});
+       app.activeDocument = window._tpl; window._tpl.activeLayer = _q;
+       var _d = new ActionDescriptor();
+       var _r = new ActionReference();
+       _r.putProperty(charIDToTypeID("Prpr"), charIDToTypeID("Lefx"));
+       _r.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+       _d.putReference(charIDToTypeID("null"), _r);
+       var _lefx = new ActionDescriptor();
+       _lefx.putUnitDouble(charIDToTypeID("Scl "), charIDToTypeID("#Prc"), 100);
+       var _s = new ActionDescriptor();
+       _s.putBoolean(charIDToTypeID("enab"), true);
+       _s.putEnumerated(charIDToTypeID("Styl"), charIDToTypeID("FStl"), charIDToTypeID("OutF"));
+       _s.putEnumerated(charIDToTypeID("PntT"), charIDToTypeID("FrFl"), charIDToTypeID("SClr"));
+       _s.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
+       _s.putUnitDouble(charIDToTypeID("Opct"), charIDToTypeID("#Prc"), 100);
+       _s.putUnitDouble(charIDToTypeID("Sz  "), charIDToTypeID("#Pxl"), ${Number(size)});
+       var _c = new ActionDescriptor();
+       _c.putDouble(charIDToTypeID("Rd  "), ${Number(r)});
+       _c.putDouble(charIDToTypeID("Grn "), ${Number(g)});
+       _c.putDouble(charIDToTypeID("Bl  "), ${Number(b)});
+       _s.putObject(charIDToTypeID("Clr "), charIDToTypeID("RGBC"), _c);
+       _lefx.putObject(charIDToTypeID("FrFX"), charIDToTypeID("FrFX"), _s);
+       _d.putObject(charIDToTypeID("T   "), charIDToTypeID("Lefx"), _lefx);
+       executeAction(charIDToTypeID("setd"), _d, DialogModes.NO);`
+    );
+  }
+
   // Create a solid-filled rectangle layer covering `frame` ([x,y,w,h]), stacked
   // directly above `above`. Used as a clip BASE for synthesized split slots: a
   // photo placed above it and clipped shows only within this rectangle, so a

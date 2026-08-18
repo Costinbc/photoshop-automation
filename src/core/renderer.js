@@ -115,6 +115,12 @@ export async function render(request, { client, env, log = noop, installedFonts 
     }
     await client.setText(layer, value);
 
+    // Optional per-field outer stroke for legibility (photo-backed templates
+    // where the text floats over an image with no plate). Manifest:
+    //   textStrokes: { <field>: { size, color: [r,g,b] } }
+    const stroke = manifest.textStrokes && manifest.textStrokes[key];
+    if (stroke) await client.applyStroke(layer, stroke.size, stroke.color);
+
     // Non-block text fields (captions and other secondary text) can also carry
     // a per-field font size from `fontSizes[key]`. Block sizes are applied in
     // reflow() alongside leading/anchoring, so skip them here.
